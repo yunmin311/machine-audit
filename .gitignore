@@ -1,0 +1,16 @@
+# 机器私有产物（绝不入库：overlay 与基线含个人路径）
+reports/
+overlay.yaml
+baseline-*.md
+baseline-*.json
+doctor-snapshot-*.json
+
+# 临时与日志
+*.log
+test-output/
+release/last-manifest.json
+
+# 证据目录里的无效件（v0.8）：fixture 仓库自带的钩子模板，
+# 每仓一套、内容全同、与审查结论零关系——曾占证据文件数 45.6%
+**/*.sample
+**/evidence/**/hooks/

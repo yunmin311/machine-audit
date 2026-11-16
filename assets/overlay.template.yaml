@@ -1,0 +1,120 @@
+# overlay.yaml · 本机参数（模板）
+#
+# 用法：复制本文件为 `<output_dir>/overlay.yaml`，按本机实际情况填写。
+#   - 只填与默认值不同的项；未写的键走技能内置默认。
+#   - 本文件是**唯一**允许出现个人绝对路径的地方（铁律 5：包内出现个人路径即为 bug）。
+#   - 机器换成另一台时，除本文件与 baseline/ 外，技能包本体不需要改一个字。
+#   - 字段语义见 references/conventions.md §overlay 字段表；改字段名要同步改那里。
+
+overlay_version: "1"
+
+# ── 输出与归档 ────────────────────────────────────────────────
+# 报告、登记表、预览产物、隔离区索引都落在这里。必填。
+output_dir: "<绝对路径，如 <盘符>:\\<审查归档>\\machine-audit>"
+
+# 报告双写归档目录（可选）。填了就必须做哈希比对，不一致即报"归档不一致"，
+# 不许只写一处而不校验——见 references/stage-13-report.md §归档。
+archive_mirror:
+  enabled: false
+  path: "<绝对路径，通常为笔记库/同步目录>"
+  mirror_scope: "reports-only"   # reports-only = 只放报告，绝不放技能源码副本
+
+# ── 扫描范围 ──────────────────────────────────────────────────
+# 全盘扫描的起点。留空 = 只扫系统盘。
+roots:
+  - "<盘符>:\\"
+
+# 递归时直接剪掉的目录名（按叶子名匹配，不区分大小写）。
+# 目的：避开 node_modules / .git / 回收站这类"体量大但无信息量"的块。
+exclude_names:
+  - "node_modules"
+  - ".git"
+  - "$Recycle.Bin"
+  - "System Volume Information"
+
+# 整体跳过的绝对路径（与 exclude_names 并用；适合外置盘、网络盘、虚拟机镜像目录）。
+exclude_paths: []
+
+# ── 阈值（不写则用内置默认，见括号）──────────────────────────
+thresholds:
+  disk_free_pct_p1: 15        # 系统盘/数据盘剩余百分比低于此值 → P1（默认 15）
+  disk_free_pct_p0: 10        # 低于此值 → P0（默认 10）
+  cache_total_p2_gb: 10       # 缓存类合计超过 → P2（默认 10）
+  cache_total_p1_gb: 20       # 缓存类合计超过 → P1（默认 20）
+  single_dir_monthly_growth_p1_gb: 20   # 单目录月增长超过且无法解释 → P1（默认 20）
+  agent_tool_p2_gb: 5         # 单个 agent 工具目录体量（默认 5）
+  agent_total_p2_gb: 25       # 全部 agent 工具合计（默认 25）
+
+# ── 两段式执行 ────────────────────────────────────────────────
+quarantine:
+  grace_days: 14             # 隔离区宽限期（天）；期满且用户再次确认才清空（宽限期管理尚未脚本化，当前按规程手工复核）
+  root_by_drive: {}          # 留空 = 每个盘根的 <盘符>:\\_quarantine\<runid>
+  # root_by_drive:
+  #   "C:": "<绝对路径>\\_quarantine"
+
+# ── 环境特征 ──────────────────────────────────────────────────
+# 杀软/EDR 进程名（stage-00 前置检查 5 用）。命中即在报告头声明"枚举可能不完整"。
+antivirus_processes:
+  - "360tray"
+  - "HipsTray"
+  - "QQPCTray"
+  - "avp"
+  - "MsMpEng"
+  - "ekrn"
+
+# 语言与报告文风：zh = 人话段用中文口语（默认），en = 英文。
+report_language: "zh"
+
+# ── 领域与规则 ────────────────────────────────────────────────
+# 命中的领域包 id（见 references/domain-packs.md）。可留空，由 stage-00 探测后回写。
+domains: []
+# domains: ["dev", "photo", "notes"]
+
+# 本机磁盘规则文件（可选）。该文件是可选的本机磁盘规则（命名/结构/快照，如顶层目录前缀、冻结路径、快照超期天数），
+# 无规则（留空或文件不存在）则跳过 stage-03 §3.1 的规则校验，只跑 §3.2 通用检查。
+rules_file: ""
+
+# ── 基线与噪音 ────────────────────────────────────────────────
+# 上一轮基线（baseline-YYYYMMDD.json）。stage-02/13 的 diff 只认这个文件，
+# 没有它就必须输出"无基线，本轮不判趋势"——不许凭印象说变好变坏。
+baseline_current: "<绝对路径>\\baseline-YYYYMMDD.json"
+
+# 噪音基线（可选，数组）。写入需满足"连续两轮一致 + 来源定性 + 复查时间"三条件，
+# 否则只登记"待确认"，不进本段。见 stage-09 §5。
+noise: []
+# noise:
+#   - id: "nvlddmkm-eventid-13"
+#     kind: "eventlog"
+#     match: "Provider=nvlddmkm;Id=13"
+#     reason: "<定性依据 + 来源>"
+#     confirmed_at: "YYYY-MM-DD"
+#     review_at: "YYYY-MM-DD"
+#     baseline_count: 12
+
+# ── 资产与配置台账 ────────────────────────────────────────────
+# 核心资产（stage-11 的 3-2-1 评估对象、asset-map 的来源）。
+# protection 写"怎么保护"，before_touch 写"动它之前先看哪节"。
+assets: []
+# assets:
+#   - name: "<资产名>"
+#     path: "<绝对路径>"
+#     kind: "media|notes|code|finance|deliverable|other"
+#     irreplaceable: true
+#     protection: "<备份/同步/版本控制方式>"
+#     before_touch: "stage-17"
+
+# 配置漂移台账（stage-16 用）：手写配置文件逐个记录 hash/mtime 与上轮 diff。
+configs: []
+# configs:
+#   - path: "<绝对路径，如 .gitconfig / .npmrc / .wslconfig>"
+#     note: "<它控制什么>"
+
+# agent 数据目录附加清单（stage-10 默认矩阵之外的本机特有目录）。
+agent_dirs_extra: []
+# agent_dirs_extra:
+#   - path: "<绝对路径>"
+#     tool: "<工具名>"
+
+# ── 首跑标记 ──────────────────────────────────────────────────
+# bootstrap 完成后写入本轮 runid；非空表示已建档，后续走 quick/full。
+bootstrap_runid: ""
