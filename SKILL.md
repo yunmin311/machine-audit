@@ -9,7 +9,7 @@ description: >-
   at runtime instead of assuming machine type; diagnosis is read-only and mutations
   require an approved plan batch with before/after verification.
 metadata:
-  version: "0.9.0"
+  version: "0.9.1"
   category: "system-health"
   platforms: "windows (v1 roadmap: macOS/Linux)"
   scope: "diagnose-plan-execute-gated"
@@ -43,7 +43,7 @@ metadata:
 4. **自包含与零个人路径**：技能包内出现个人绝对路径即为缺陷；本机事实只进 `overlay.yaml` 与 `baseline-*.json`。
 5. **先诊断、批内执行、重测关闭**：破坏性动作须在已批准方案批次内走隔离区；问题关闭必须重测原证据条件。
 
-## 3. 阶段分层与路由表（唯一阶段总表见 `README.md`）
+## 3. 阶段分层与路由表（完整阶段表在 `README.md`，供人阅读；agent 不必加载）
 
 **三层执行范围**：**Tier 1 必查（6）** `00/02/04/07/11/13` · **Tier 2 按角色（7）** `05/06/09/10/15/16/17` · **Tier 3 触发（6）** `01/03/08/12/14/18`。
 **模式约束**：`quick` 只跑 Tier 1；`full` 跑 Tier 1+2；Tier 3 仅当信号命中时按需展开；`bootstrap` 首跑建档+判风险；`execute` 按批执行；`maintain` 事件/周期维护。未知场景先查 `references/domain-packs.md` 线索再运行时联网核验（附来源与日期）。

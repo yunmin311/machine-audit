@@ -3,7 +3,7 @@
 > **面向 AI 编码代理的可审计整机健康审查与治理循环技能包（Agent Skills 规范）**
 > **Auditable Whole-Machine Health Audit & Governance Loop Skill for AI Coding Agents (Agent Skills Spec)**
 
-`Version: v0.9.0` · `Baseline Schema: v1.2` · `License: MIT` · `Platform: Windows 10/11 (PowerShell 5.1+)` · `Stages: 19 (00–18)` · `Domain Packs: 62` · `Assertions: 103 (45 + 33 + 25)`
+`Version: v0.9.1` · `Baseline Schema: v1.2` · `License: MIT` · `Platform: Windows 10/11 (PowerShell 5.1+)` · `Stages: 19 (00–18)` · `Domain Packs: 62` · `Assertions: 103 (45 + 33 + 25)`
 
 [中文文档](#中文文档) · [English Documentation](#english-documentation)
 
@@ -201,7 +201,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-agent-helpers
 #### 6.3 已知限制与路线图
 
 - **当前已知限制**：`project-doctor.ps1` 全局 `SilentlyContinue` 的错误吞噬限制已如实声明；`ls-remote` 采用 15s 进程级超时；两段式执行器（`invoke-plan.ps1` / `rollback.ps1`）、L2 预览生成器与宽限期管理**尚未脚本化**；仅支持 Windows（macOS/Linux 命令投影待写）；除阶段 00/02/11/13/18 配套脚本外，其余系统面阶段以规范引导人工/Agent 采样为主。
-- **v0.9.0（当前）**：`SKILL.md` 改为 Tier 1/2/3 分层与 17 项信号路由；剥离重复清单；`stage-02`/`15`/`execution-safety` 完成故事与判据分离；公开脚本 5 合 3（统一 `scripts/probe.ps1`）；新增 `stage-04` CLI 登录体检与 `stage-16 §8` 链路基线（`schema 1.2` + `network` 节校验）。
+- **v0.9.1（当前）**：`SKILL.md` 路由表标题措辞修正（明确 README 阶段表仅供人读，agent 不必加载）。无功能变更。
+- **v0.9.0**：`SKILL.md` 改为 Tier 1/2/3 分层与 17 项信号路由；剥离重复清单；`stage-02`/`15`/`execution-safety` 完成故事与判据分离；公开脚本 5 合 3（统一 `scripts/probe.ps1`）；新增 `stage-04` CLI 登录体检与 `stage-16 §8` 链路基线（`schema 1.2` + `network` 节校验）。
 - **v0.9.x**：执行器脚本化（`invoke-plan.ps1` / `rollback.ps1`，当前尚未实现）、L2 预览生成器、隔离区宽限期管理、其余阶段的最小断言补齐。
 - **v1.0**：macOS/Linux 命令投影、多场景执行回归、更多领域包。
 
