@@ -40,8 +40,8 @@ try {
   # 结构完整的正例（六节齐 + 带时区时间 + 数值 free_pct + 采样口径 + 归属定性）
   $good = @'
 {
-  "schema_version": "1.1",
-  "meta": { "run_id": "20261116-181200123", "generated_at": "2026-11-16T18:12:00+08:00", "skill_version": "0.8.1", "mode": "full" },
+  "schema_version": "1.2",
+  "meta": { "run_id": "20261116-181200123", "generated_at": "2026-11-16T18:12:00+08:00", "skill_version": "0.9.0", "mode": "full" },
   "environment": {
     "os": { "caption": "Windows 11 Pro", "build": "22631", "locale": "zh-CN" },
     "user": { "name": "u" },
@@ -130,11 +130,30 @@ try {
   Assert ($r.Exit -eq 1) "scan_status=partial 且 sampled=false → 拒绝（实际 exit=$($r.Exit)）"
   Assert ($r.Out -match "必须 sampled=true") "scan_status=partial 且 sampled=false → 报错要求 sampled=true"
 
-  # ---- 12. S-2：自定义阈值 -CritPct 20 对 free_pct=18 生效 ----
+  # ---- 12. 自定义阈值 -CritPct 20 对 free_pct=18 生效 ----
   $p = Write-Case "custom-crit-pct" ($good -replace '"free_pct": 16\.9', '"free_pct": 18.0' -replace '"free_bytes": 80400000000', '"free_bytes": 85680000000')
   $r = Invoke-Checker $p @("-CritPct", "20")
   Assert ($r.Exit -eq 1) "-CritPct 20 且 free_pct=18, redline=ok → 拒绝（实际 exit=$($r.Exit)）"
   Assert (($r.Out -match "redline 与 free_pct 一致") -and ($r.Out -match "应为 critical")) "-CritPct 20 → 报错指出应为 critical"
+
+  # ---- 13. 可选 network 节正例（schema 1.2 / 链路基线）----
+  $netGood = ($good -replace '"restrictions": \[\]', '"restrictions": [], "network": { "consent_confirmed": true, "samples_per_target": 3, "targets": [ { "target": "example.com", "latency_p50_ms": 22.5, "loss_pct": 0.0, "dns_ms": 14.2, "status": "ok" } ] }')
+  $p = Write-Case "net-good" $netGood
+  $r = Invoke-Checker $p
+  Assert ($r.Exit -eq 0) "含合法 network 节正例 → 通过（实际 exit=$($r.Exit)）"
+  Assert ($r.Out -match "PASS") "含合法 network 节正例 → 输出含 PASS"
+
+  # ---- 14. network.targets 为空 → 拒绝 ----
+  $p = Write-Case "net-empty-targets" ($good -replace '"restrictions": \[\]', '"restrictions": [], "network": { "samples_per_target": 3, "targets": [] }')
+  $r = Invoke-Checker $p
+  Assert ($r.Exit -eq 1) "network.targets 为空 → 拒绝（实际 exit=$($r.Exit)）"
+  Assert ($r.Out -match "network\.targets") "network.targets 为空 → 报错定位到 network.targets"
+
+  # ---- 15. network.loss_pct 越界(>100) / dns_ms 非数值 → 拒绝 ----
+  $p = Write-Case "net-bad-metrics" ($good -replace '"restrictions": \[\]', '"restrictions": [], "network": { "samples_per_target": 3, "targets": [ { "target": "example.com", "latency_p50_ms": 10, "loss_pct": 120, "dns_ms": "fast" } ] }')
+  $r = Invoke-Checker $p
+  Assert ($r.Exit -eq 1) "network 指标越界/类型错 → 拒绝（实际 exit=$($r.Exit)）"
+  Assert (($r.Out -match "loss_pct") -and ($r.Out -match "dns_ms")) "network 异常指标 → 报错同时定位 loss_pct 与 dns_ms"
 
   Write-Host ""
   if ($script:pass) { Write-Host "全部通过" -ForegroundColor Green } else { Write-Host "存在失败断言" -ForegroundColor Red }

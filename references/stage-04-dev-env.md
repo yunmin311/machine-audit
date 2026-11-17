@@ -10,6 +10,10 @@
 4. **包管理器配置**：npm（prefix/cache/registry/token）、pip、pnpm、uv、cargo——缓存位置在 C 盘还是数据盘（迁移建议素材）。
 5. **凭据台账**（只列元数据，绝不读内容）：`~/.npmrc` authToken、各 agent auth 文件（`.claude/.credentials*`、`.codex/auth.json`、`.cc-switch/*.json` 等）、`~/.ssh` 私钥数、明文恢复码/密钥文件（Downloads 类目录扫描 `*recovery*|*secret*|*.pem|*.key`）。新增凭据文件 = P1。
 6. Python 多版本：`py -0p` 注册表 vs 实际目录 vs PATH 可见性三角核对。
+7. **CLI 登录体检**（现查现停，不自动登录或切换）：
+   - 检查：`gh auth status` / `git config user.email` / `npm whoami` / `docker info` / `ssh -T -o BatchMode=yes -o ConnectTimeout=5 git@github.com`
+   - 三态输出：`未登录` / `凭据过期` / `身份不符（期望 vs 实际）`（`ssh -T` 鉴权成功亦常返回退出码 1，以欢迎文本判定；离线标 `受限`）
+   - 隐私与修复：报告只写 `"已登录（账号已脱敏）"`，不写 token 或完整账号名；仅给出修复命令（如 `gh auth login`），不自动执行
 
 ## 判定（v0.6 重写：五要素发现结构，拒绝武断定级）
 

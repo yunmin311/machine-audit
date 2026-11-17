@@ -2,6 +2,15 @@
 
 > 倒序排列：最新在最上。`0.6.0` 与 `0.6.4` 两个版本号跳过未发布（改动并入相邻条目）。
 
+## 0.9.0 — 2026-11-17（路由重构 · 判定精简 · 脚本 5→3 · CLI 与链路基线）
+
+> 主线：减重复、加 Tier 1/2/3 分层与信号路由、剥离纯故事保留可运行判据、公开脚本 5 合 3 统一为 `scripts/probe.ps1`，并新增 CLI 登录三态体检与三目标链路基线。
+
+- Refactored (`SKILL.md` / `README.md` / `assets/overlay.template.yaml`): `SKILL.md` 重写为「何时用/不用 · 五铁律 · Tier 1(6)/Tier 2(7)/Tier 3(6) 信号路由表 · 输出形状」；唯一 19 阶段全览表与断言总数收敛至 `README.md`，`overlay` 字段表收敛至 `references/conventions.md`（模板顶部去重直指权威表）。
+- Refactored (`references/stage-02-disk.md` / `stage-15-residue.md` / `execution-safety.md` / `domain-packs.md` / `memory-hygiene.md`): 将故事型叙事剥离为「现象 / 判据 / 命令」三行格式，并将 62 条领域线索与文档寿命治理压缩为紧凑索引与规则表（判定条件与可运行命令零删减）。
+- Changed (`scripts/probe.ps1`, 公开脚本 `5 → 3`): 新建 `scripts/probe.ps1`（`-Action env | space | docs | delta`），合并替代 `bootstrap-probe.ps1`、`doc-hygiene.ps1` 与 `measure-space-delta.ps1`；同步更新 `release/public-allowlist.txt` 与 `tests/test-agent-helpers.ps1`（全 4 动作实跑回归，25 断言）。
+- Added (`references/stage-04-dev-env.md` / `stage-16-network.md` / `assets/baseline.schema.json` / `scripts/baseline-check.ps1`): 新增阶段 04 CLI 登录三态体检（`gh`/`git`/`npm`/`docker`/`ssh -T` 脱敏报告）与阶段 16 `§8` 链路基线（固定 3 目标 × 3 次 p50/丢包/DNS，仅报差值）；`baseline.schema.json` 升 `1.2`（加可选 `network` 节）并新增结构校验与正反例测试（共 103 断言 = 45 + 33 + 25，PS 5.1 全过）。
+
 ## 0.8.1 — 2026-11-16（PS 5.1 枚举兼容 · 结构门去恒真 · 公开版基线）
 
 > 主线：消除 PS 5.1 枚举兼容隐患、移除 `baseline-check.ps1` 恒真断言、补齐 `overlay` 字段表与 Agent 只读辅助脚本，并完善公开版文档与发布白名单规范。
@@ -9,9 +18,9 @@
 - Fixed [P0]: `references/stage-02-disk.md` §扫描方法 —— **修了什么**：将主枚举路径改为 PS 5.1 兼容的 `DirectoryInfo.EnumerateFileSystemInfos('*', [IO.SearchOption]::TopDirectoryOnly)` 迭代并显式跳过 `ReparsePoint`，异常显式输出 `status=failed`（`bytes/files=$null` 不返回 `0`），将 `System.IO.EnumerationOptions` 移入 `if ($PSVersionTable.PSVersion.Major -ge 7)` 加速分支，并补充「`files=0` 且目录非空时先怀疑采集失败」口径。**为什么**：`EnumerationOptions` 在 PS 5.1（.NET 4.x）直接抛"找不到类型"导致静默落成 `0` 字节。
 - Fixed [P1]: `scripts/baseline-check.ps1` / `assets/baseline.schema.json` / `assets/baseline.template.md` / `references/stage-00-bootstrap.md` / `tests/test-baseline-schema.ps1` —— **修了什么**：删掉恒真断言 `files -ge 0`，替换为 `sampled=false && files=0 && bytes>0` 拒绝、可选 `scan_status`（`ok|partial|failed`，`failed` 整份不判 PASS、`partial` 必须 `sampled=true`）、`-WarnPct`/`-CritPct` 参数化（默认 `15`/`10`）；schema 升次版本 `1.0 → 1.1`（`owner_note` 进 `required`、`drives.id` 加 `$`、`scan_status` 入 schema 与模板）；`stage-00` 补充首轮 `project-doctor.ps1 -SaveBaseline` 指引；测试新增 10 条反例断言（共 27 条）。**为什么**：`files -ge 0` 恒真放过采集失败基线，且 schema 与校验器口径及自定义阈值未对齐。
 - Fixed [P1]: `assets/overlay.template.yaml` / `references/conventions.md` / `references/stage-00-bootstrap.md`（及 `stage-03` / `07` / `09` / `10` / `11`）/ `SKILL.md` —— **修了什么**：`noise: {}` 改为 `noise: []` 与列表注释一致；在 `conventions.md` 新增 `## overlay 字段表` 覆盖全部 18 个顶层键与阶段别名；补齐 `rules_file` 可选磁盘规则说明并统一阶段内别名写法。**为什么**：模板类型自相矛盾且 `§overlay 字段表` 引用断链。
-- Fixed [P1]: `references/`、`docs/design/execution-safety.md`、`scripts/doc-hygiene.ps1`、`scripts/project-doctor.ps1`、`CHANGELOG.md` —— **修了什么**：全面清理包内示例路径与内部叙事，统一替换为通用占位符并保留实测参考数量级。**为什么**：遵循 Kernel/Instance 分离原则，保证技能包自包含且可直接公开发布。
+- Fixed [P1]: `references/`、`docs/design/execution-safety.md`、`doc-hygiene.ps1`、`scripts/project-doctor.ps1`、`CHANGELOG.md` —— **修了什么**：全面清理包内示例路径与内部叙事，统一替换为通用占位符并保留实测参考数量级。**为什么**：遵循 Kernel/Instance 分离原则，保证技能包自包含且可直接公开发布。
 - Fixed [P2]: `README.md`、`SKILL.md`、`references/execution-safety.md`、`docs/design/execution-safety.md`、`references/memory-hygiene.md`、`assets/overlay.template.yaml` —— **修了什么**：将 `README.md` 重写为正式中英双语版并同步阶段数为 19、断言数为 89（45+27+17；v0.8.0 为 62）；移除「L1 清单预览（已实现）」误述；在所有 `invoke-plan.ps1`、`rollback.ps1`、`tree-before/tree-after`、`operations-preview.jsonl` 与宽限期管理出现处紧跟"尚未实现/尚未脚本化"显式标注。**验收命令**：`rg -n "rollback\.ps1|invoke-plan\.ps1" -A3` 逐处确认含未实现/待建/尚未脚本化提示。
-- Added: `scripts/bootstrap-probe.ps1` / `scripts/measure-space-delta.ps1` / `tests/test-agent-helpers.ps1` / `LICENSE` —— **修了什么**：新增面向 Agent 的 PS 5.1 只读首跑基线采集器（跳过 ReparsePoint、按 `-MaxFilesPerDir` 限流、未传 `-Roots` 不全盘扫、异常显式标 `failed`）与删除三栏空间增量测量器（精确采样 `FreeSpace` 与单引号 `'$Recycle.Bin'` 增量，自动拦截回收站假成功）；补充 MIT 许可证并在 `SKILL.md` 新增 Agent 防踩坑速查（`-File` 数组传参陷阱等）。**验收命令**：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-agent-helpers.ps1`（17 PASS / 0 FAIL）。
+- Added: `bootstrap-probe.ps1` / `measure-space-delta.ps1`（已于 `0.9.0` 合并至 `scripts/probe.ps1`）/ `tests/test-agent-helpers.ps1` / `LICENSE` —— **修了什么**：新增面向 Agent 的 PS 5.1 只读首跑基线采集器（跳过 ReparsePoint、按 `-MaxFilesPerDir` 限流、未传 `-Roots` 不全盘扫、异常显式标 `failed`）与删除三栏空间增量测量器（精确采样 `FreeSpace` 与单引号 `'$Recycle.Bin'` 增量，自动拦截回收站假成功）；补充 MIT 许可证并在 `SKILL.md` 新增 Agent 防踩坑速查（`-File` 数组传参陷阱等）。**验收命令**：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-agent-helpers.ps1`（17 PASS / 0 FAIL）。
 
 ## 0.8.0 — 2026-11-16（基线可校验 · 模板齐备 · 删除验收改口径）
 
@@ -42,7 +51,7 @@
 
 ## 0.7.0 — 2026-11-07（记忆与文档卫生）
 - Added: `references/memory-hygiene.md`（stage-18）——五层寿命模型（L0 会话 / L1 日志 30 天 / L2 报告 90 天 / L3 沉淀 / L4 草稿）、三种触发（15 轮或里程碑 / 目录 >200 份或单文件 >3000 行 / 每周周期）、三档动作（蒸馏 / 归档 / 退役）、写入闸门。
-- Added: `scripts/doc-hygiene.ps1`——只读扫描各目录 MD 数量与年龄分布，输出硬触发判定与三档建议。
+- Added: `doc-hygiene.ps1`（已于 `0.9.0` 合并至 `scripts/probe.ps1 -Action docs`）——只读扫描各目录 MD 数量与年龄分布，输出硬触发判定与三档建议。
 - Changed: SKILL.md 阶段数 18 → 19；maintain 模式新增「记忆卫生是常驻子任务」条款；README 阶段表补 18。
 - Fixed: CHANGELOG 条目倒序整理（此前 0.5.1 在顶、0.6.x 在底）。
 - Rationale: 大量 Markdown 文档膨胀的主因是「每轮必写 / 只增不并 / 无退役」，属流程缺陷而非使用问题。清理只治标，写入闸门才治本。

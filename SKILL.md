@@ -5,12 +5,11 @@ description: >-
   整机审查 / 全机体检 / 跑一遍 doctor / 电脑变卡了 / 有没有垃圾残留 / 删东西前先检查 /
   帮我清理 / 二手验机 / 这台机器该怎么整理 / 按上次计划执行清理 / 复查一下改完的效果
   — or English: PC health check, disk audit, leftover cleanup, before-I-delete,
-  apply the cleanup plan, re-check after changes. Works on any machine: it
-  explores and learns the machine at runtime instead of assuming its type.
-  Diagnosis phases are read-only; every change passes an approval gate on a
-  concrete plan and is batched with before/after verification.
+  apply the cleanup plan, re-check after changes. Works on any machine: explores
+  at runtime instead of assuming machine type; diagnosis is read-only and mutations
+  require an approved plan batch with before/after verification.
 metadata:
-  version: "0.8.1"
+  version: "0.9.0"
   category: "system-health"
   platforms: "windows (v1 roadmap: macOS/Linux)"
   scope: "diagnose-plan-execute-gated"
@@ -19,91 +18,62 @@ metadata:
 
 # Machine Audit · 机器治理循环
 
-## 这个技能是什么：一套循环，不是一个报告
-
-```
-事实与风险(只读) → 具体方案 → 批准方案与批次 → 前提检查 → 分批执行+逐批验证 → 复核 diff → 维护循环
+```text
+事实与风险(只读) → 具体方案(含预览) → 批准批次 → 前提校验 → 两段式隔离执行 → 复核 diff → 维护
 ```
 
-**只读是诊断阶段的行为，不是本技能的身份。** 修复与清理是流程的正后半场——但审批发生在**具体方案**之后（不是在报告概要之后），且计划变更后原批准需要重新核对。
+## 1. 何时用 / 何时不用
 
-## 语义模型（先理解，再扫描——防止对任何一类机器过拟合）
+**何时用（命中其一即可）**：
+- 全机体检或首跑建档：摸清硬件/磁盘/环境/安全/备份基线，或持续做跨轮趋势 diff。
+- 磁盘告急或性能变卡：定位大目录/安装包/冗余文档，或检查零使用后台服务。
+- 改前安全检查与执行验收：删除/清理前出具体方案与三栏空间验收，执行后重验关闭问题。
+- 二手验机/新机迁移/异常溯源：排查端口暴露、CLI 登录故障、持久化劫持、权限拒删。
 
-**机器 = 角色集合（可任意复合）。** 不贴人群标签，识别角色原语：
+**何时不用**：
+- **一次性单命令问答**（如只查某进程 PID 或单文件语法），直接用系统命令更轻量。
+- **要求绕过批准直接静默删文件/清目录/改系统配置**（违反方案先行与分级授权边界）。
+- **要求实时流式入侵响应/取证或非 Windows 系统执行本包 PS1 脚本**（命令仅投影 Windows）。
 
-| 角色族 | 原语（可叠加） |
+## 2. 五条铁律（操作细节见 `references/conventions.md`）
+
+1. **诊断只读与落盘隔离**：只查不改；写入仅限 `overlay.output_dir` 下的报告/基线/overlay。
+2. **首轮定级与五要素证据**：明确的当前危险第一轮即报警，缺历史仅限趋势标"无基线"；发现须含事实/影响/证据/严重度/规则。
+3. **受限与副作用如实声明**：遇无权限/AV/CLM/离线/云占位标"受限"不猜；会写盘、占带宽或执行 profile 的检查非只读，须先征得同意。
+4. **自包含与零个人路径**：技能包内出现个人绝对路径即为缺陷；本机事实只进 `overlay.yaml` 与 `baseline-*.json`。
+5. **先诊断、批内执行、重测关闭**：破坏性动作须在已批准方案批次内走隔离区；问题关闭必须重测原证据条件。
+
+## 3. 阶段分层与路由表（唯一阶段总表见 `README.md`）
+
+**三层执行范围**：**Tier 1 必查（6）** `00/02/04/07/11/13` · **Tier 2 按角色（7）** `05/06/09/10/15/16/17` · **Tier 3 触发（6）** `01/03/08/12/14/18`。
+**模式约束**：`quick` 只跑 Tier 1；`full` 跑 Tier 1+2；Tier 3 仅当信号命中时按需展开；`bootstrap` 首跑建档+判风险；`execute` 按批执行；`maintain` 事件/周期维护。未知场景先查 `references/domain-packs.md` 线索再运行时联网核验（附来源与日期）。
+
+| 用户信号（出现即按需加载对应文件） | 读哪份参考 / 调哪个脚本 |
 |---|---|
-| 生产 | 写代码 / 做文档 / 产媒体 / 训模型 / 做设计 / 记笔记 |
-| 消费 | 游戏 / 流媒体 / 阅读 / 下载 |
-| 承载 | 跑数据库 / 自托管服务 / 当同步枢纽 / 被远程访问 |
-| 连接 | 多设备同步 / VPN 组网 / 局域网共享 / 远程办公 |
-| 治理 | 个人机 / 家庭共管 / 组织受管 / 待验机 / 待迁移 |
+| 首跑 / 建档 / 不知道这台机器承担什么角色 | `references/stage-00-bootstrap.md` + `assets/overlay.template.yaml` + `scripts/probe.ps1 -Action env` |
+| 通用编码/路径/编码避坑或查 `overlay` 字段语义 | `references/conventions.md` |
+| 认出机器所属行业/开发/创意/特殊场景信号 | `references/domain-packs.md` |
+| 盘满了 / 空间去哪了 / 安装包太占空间 | `references/stage-02-disk.md` + `scripts/probe.ps1 -Action space` |
+| 装了什么 / PATH 乱 / CLI 登录报错或身份异常 | `references/stage-04-dev-env.md` |
+| 安全吗 / 防火墙端口暴露 / 陌生根证书 | `references/stage-07-security.md` |
+| 开机莫名自启 / 怀疑被浏览器或任务劫持 | `references/stage-08-persistence.md` |
+| 备份够不够 / 仓库同步是真是假 | `references/stage-11-backup.md` + `scripts/project-doctor.ps1` |
+| 网络慢 / 代理黑洞 / VPN / 测三目标链路基线 | `references/stage-16-network.md` |
+| 删不干净 / 死快捷方式 / 权限拒删 / 服务空跑 | `references/stage-15-residue.md` |
+| 要动手删改 / 出批前预览 / 验空间真释放了 | `references/execution-safety.md` + `docs/design/execution-safety.md` + `scripts/probe.ps1 -Action delta` |
+| 写报告 / 基线校验 / 与上一轮做结构 diff | `references/stage-13-report.md` + `assets/baseline.schema.json` + `scripts/baseline-check.ps1` |
+| 文档或笔记爆炸 / 会话与工作日志膨胀 | `references/memory-hygiene.md` + `scripts/probe.ps1 -Action docs` |
+| 虚拟机 / 模拟器 / 怀疑隐藏 WSL 或孤儿 vhdx | `references/stage-05-virtualization.md` |
+| 查最近新装了什么软件、系统服务或自启变化 | `references/stage-06-software-diff.md` |
+| 系统频繁出错 / 软件闪退查堆栈与噪音基线 | `references/stage-09-logs.md` |
+| AI Agent 缓存占空间 / 沙箱账户 / 凭据进同步盘 | `references/stage-10-agents.md` |
+| 硬件驱动固件 / 目录规则 / 终端崩溃 / 性能压测 / 照片原片 | `references/stage-01-hardware.md` / `stage-03-rules.md` / `stage-12-terminals.md` / `stage-14-benchmark.md` / `stage-17-media.md` |
 
-**子系统 = 解剖单位：** 存储、安全、网络、计算、媒体、开发、同步、凭据、服务、桌面环境。角色定权重，子系统定检查。
+> **脚本调用防踩坑**：PS 5.1 `-File` 会丢弃数组第二个值，多 `-Roots` 务必用 `powershell -Command "& '.\scripts\...' -Roots @('A','B')"`；回收站路径全程单引号 `'E:\$Recycle.Bin'`。
 
-**每项检查拆成语义五元组**：资产 / 健康 / 一致性 / 暴露 / 可恢复。19 个阶段（00–17 系统面 + 18 记忆与文档卫生）只是这套语义在 Windows 上的投影——换 OS 换命令，不换语义。（领域线索现 62 条，种子库按运行时发现持续扩充。）
+## 4. 输出形状与未脚本化边界
 
-## 铁律
-
-1. **诊断阶段只读**；写入仅限报告/登记表/overlay（位置由 overlay 决定，绝不依赖个人路径）。
-2. **首轮照常判断当前风险**：明确的危险（唯一副本、备份损坏、凭据外泄、裸奔的敏感服务）第一轮就要报警；只有**趋势类**结论（变好/变坏多少）依赖历史，标注"尚无历史，暂不能判断趋势"。
-3. **分级跟着证据走**：每条发现记录五要素——观察到的事实 / 可能影响 / 证据充分程度 / 严重程度 / 适用规则。未知项先标"待确认"；严重程度必须与实际暴露和用户规则挂钩（见 stage-04 的写法），禁止用风险大词逼审批。
-4. **受限就声明**：权限不足/组件缺失/杀软/受管策略/云占位文件 → 标注"受限"，禁止猜；采集失败不等于一切正常。
-5. **自包含**：包内出现个人绝对路径即为 bug；机器私有事实只进 overlay 与基线。
-6. **副作用如实标注**：会写盘的检查（如磁盘测速）、会执行用户代码的检查（如加载 shell profile）不属于只读，必须单独标注并取得同意。
-7. **先诊断后动手**；升级动作（删除/清理/推送/服务操作）必须落在已批准批次内。
-
-## 流程与门（v0.6 重排：方案先行，一次审批）
-
-| 步 | 内容 | 退出条件 |
-|---|---|---|
-| 事实与风险 | 只读诊断（bootstrap/quick/full），每项检查标注覆盖状态：完整检查/抽样/失败/权限不足/未检查/不适用 | 报告+覆盖表+证据+资产地图 |
-| 具体方案 | 每个待处理批次写清：精确对象清单 / 具体动作 / 预期收益 / 依赖与影响范围 / 回滚材料 / 成功条件 / 停止条件；无法回滚的动作如实说明 | 方案成文 |
-| **预览确认**（大额批次默认要求） | 生成 tree-before / tree-after（改完之后的样子）/ asset-map（重要文件位置图）/ rollback-manifest（尚未脚本化，当前按规程手工生成） | 用户确认预览 |
-| **批准门** | 用户批准的是**方案与批次**（不是报告概要）；批准后若对象/版本/计划变化，重新核对是否需要再批 | 明确授权清单 |
-| 前提检查 | 执行前核对：对象指纹与批准 manifest 一致（不符=现场已变，该批挂起）、空间/权限够吗 | 通过 |
-| 分批执行 | **两段式**：删除类一律先移同盘隔离区（不真删，机器照常使用=真实预览）；每动作先写 operations.jsonl（幂等重放、中断恢复、防重复操作）；每批前后实测对比；**异常即停** | 全批完成 |
-| 验证与记录 | 复核受影响阶段；问题关闭必须**重测原证据条件**（检查失败、对象离线不能关闭问题）；删除类批次以**可用空间增量**验收并报「逻辑释放/实测释放/回收站」三栏——文件"已消失"不是验收（回收站路径会给出假成功）；同日前后测都保留（文件名带毫秒级运行 ID） | diff 报告送达 |
-| 宽限期与清空 | 隔离区保留 14 天（overlay 可调；宽限期管理脚本尚未实现，当前按规程手工复核）→ 期满且用户**再次确认** → 才真正清空 | 清空报告 |
-
-**资产地图**：报告固定章节——重要文件（照片原片/账套/交付物/仓库/笔记库）的位置、体量、备份状态、保护方式与"动它之前先看哪节"。**重要文件默认只指向不动作**。
-
-**执行安全机制**（两段式/隔离区/操作日志/回退）：规程见 `references/execution-safety.md`，完整设计见仓库 `docs/design/execution-safety.md`（`invoke-plan.ps1` / `rollback.ps1` 尚未实现/待建）。
-
-> **该脚本尚未实现：以下为设计中的调用约定；当前需按 `references/execution-safety.md` 规程手工执行。**
-
-**包内可直接用的产物**（v0.8 起齐备，别再自造结构）：
-
-| 产物 | 用途 |
-|---|---|
-| `assets/overlay.template.yaml` | 本机参数模板——首跑复制后填，不许自造字段名 |
-| `assets/baseline.schema.json` | 基线六节的唯一权威定义（结构漂移即报缺陷） |
-| `assets/baseline.template.md` | 基线的人读视图模板（嵌进报告用） |
-| `scripts/bootstrap-probe.ps1` | 只读首跑采集器（PS 5.1 兼容，跳过 ReparsePoint，按 `-MaxFilesPerDir` 限流防卡死，输出直接符合 schema 1.1） |
-| `scripts/baseline-check.ps1` | 基线机械校验（PS 5.1 可用，无 Test-Json 依赖）；建档与每轮写回后必跑 |
-| `scripts/project-doctor.ps1` | git 同步巡检；`-Baseline` 出趋势，无基线时显式"不判趋势" |
-| `scripts/doc-hygiene.ps1` | 文档膨胀扫描（stage-18 的周期动作） |
-| `scripts/measure-space-delta.ps1` | 删除验收三栏空间增量测量器（精确采样 `FreeSpace` 与 `$Recycle.Bin` 变化，拦截回收站假成功） |
-
-**Agent 执行防踩坑速查**：① PS 5.1 `-File` 模式对 `string[]` 多值参数会静默丢掉第二个值——多目录传入 `-Roots` 务必改用 `powershell -Command "& '.\scripts\project-doctor.ps1' -Roots @('A','B')"`；② 全程 `-LiteralPath` 与单引号 `'E:\$Recycle.Bin'`（防 `$Recycle` 被展开）；③ 绝不默认全盘扫描，未传 `-Roots` 时 `bootstrap-probe.ps1` 仅采集环境与卷账目。
-
-## 探索机制（教"怎么查"，不硬编码"查到什么"）
-
-1. `references/domain-packs.md`（62 条领域线索）是**种子库**：命中信号只打开探索扇面。
-2. 未知软件/领域 → 运行时 web 搜索（是什么/数据在哪/常见故障/当前规范），**规范类结论带来源与日期**。
-3. 新模式回写 overlay 与 overlay `noise` 噪音基线——但**新观察≠已确认正常**：登记进入"待确认"，需要证据与复查时间才可升为例外（见 stage-13 的四类记录）。
-4. Kernel/Instance 铁律不变。
-
-## 模式
-
-bootstrap（首跑建档+判当前风险）/ quick / full / execute（按批准计划执行）/ maintain（周期+事件触发：新装重要软件、新监听端口、同步范围改变、备份失败、关键配置变动 → 相关结论自动进入待复核；日历周期只是兜底；定时任务在用户授权后才创建）。
-
-**记忆卫生是 maintain 的常驻子任务**（见 `references/memory-hygiene.md`）：每 15 轮或里程碑做一次文档增量盘点；单目录 MD > 200 份、单文件 > 3,000 行、或所在卷剩余 <15% 时升级为强制提示。动作只有三档——蒸馏（同主题合并为结论）/ 归档（tar.xz + 索引）/ 退役（仅 L4 草稿与已蒸馏的 L1 日志）。**顺序永远是先蒸馏后删除；L3 知识沉淀不进删除通道。**
-
-## 覆盖与维护承诺格式
-
-每轮报告末尾承诺格式：「截至 <时刻>，已完成 <范围清单，含覆盖状态> 的检查，发现 <分级问题>，未验证项 <清单>；按批准方案处理后已取得 <复核证据>；出现 <触发条件> 时需要重查。」
-
-## 已知缺陷声明（v0.6 自审）
-
-PS 5.1 最低公分母；日期解析已 InvariantCulture；Windows-only（语义模型三平台通用，命令投影待写）；doctor 全局 SilentlyContinue 的错误吞噬限制已如实声明（conventions/规格书）；19 个阶段文件与 62 条领域线索已就位，跨平台命令投影与更多执行期脚本为 v1 主线；`invoke-plan.ps1` / `rollback.ps1` 仍未实现——两段式执行目前靠规程约束，不靠脚本强制，这一点不许说成"已自动化"。
+- **报告骨架**：技术段（snapshots 与权限档位 + 分阶段事实表 + 与上轮基线 diff + 分级问题/资产地图）+ 人话段（≤3 件当轮最该做的事）。完整模板与双写 SHA256 校验见 `references/stage-13-report.md`。
+- **覆盖状态六态（每项检查必标其一）**：`完整检查` / `抽样` / `失败` / `权限不足` / `未检查` / `不适用`。
+- **承诺格式（≤3 行）**：`截至 <时刻>，已完成 <范围清单与覆盖状态> 检查，发现 <分级问题>，未验证 <清单>；按批准方案处置后已取得 <复核证据>；出现 <触发条件> 时须重查。`
+- **诚实声明**：`scripts/invoke-plan.ps1`、`scripts/rollback.ps1`、L2 树预览生成与 14 天隔离区自动宽限期管理**尚未脚本化/尚未实现**，当前严格按 `references/execution-safety.md` 手工执行并留存三栏实测证据。

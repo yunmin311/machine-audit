@@ -3,7 +3,7 @@
 > **面向 AI 编码代理的可审计整机健康审查与治理循环技能包（Agent Skills 规范）**
 > **Auditable Whole-Machine Health Audit & Governance Loop Skill for AI Coding Agents (Agent Skills Spec)**
 
-`Version: v0.8.1` · `Baseline Schema: v1.1` · `License: MIT` · `Platform: Windows 10/11 (PowerShell 5.1+)` · `Stages: 19 (00–18)` · `Domain Packs: 62` · `Assertions: 89 (45 + 27 + 17)`
+`Version: v0.9.0` · `Baseline Schema: v1.2` · `License: MIT` · `Platform: Windows 10/11 (PowerShell 5.1+)` · `Stages: 19 (00–18)` · `Domain Packs: 62` · `Assertions: 103 (45 + 33 + 25)`
 
 [中文文档](#中文文档) · [English Documentation](#english-documentation)
 
@@ -45,68 +45,66 @@
 
 ```text
 machine-audit/
-├── SKILL.md                        # Agent 技能入口规范（v0.8.1，角色/铁律/门禁/速查）
-├── README.md                       # 本说明文档（中英双语）
+├── SKILL.md                        # Agent 技能入口规范（v0.9.0：何时用/五铁律/Tier路由表/输出形状）
+├── README.md                       # 本说明文档（中英双语；含唯一阶段全览表与全包测试总数）
 ├── CHANGELOG.md                    # 版本变更记录
 ├── LICENSE                         # MIT 开源许可证
 ├── .gitignore                      # 排除本机私有产物（overlay/基线/报告）
-├── assets/                         # 配置与基线权威模板（v0.8+ 齐备，勿自造结构）
-│   ├── overlay.template.yaml       # 本机参数模板（18 顶层键）
-│   ├── baseline.schema.json        # 基线 JSON Schema（v1.1，6 固定节 + meta + snapshots）
+├── assets/                         # 配置与基线权威模板（勿自造结构）
+│   ├── overlay.template.yaml       # 本机参数模板（18 顶层键，字段定义以 conventions.md 为准）
+│   ├── baseline.schema.json        # 基线 JSON Schema（v1.2，6 固定节 + meta + 可选 snapshots/network）
 │   └── baseline.template.md        # 基线人读视图模板（不一致时以 JSON 为准）
 ├── references/                     # 全阶段操作规范与领域知识
-│   ├── conventions.md              # 共通守则、PS5.1 陷阱规避与 §overlay 字段表
-│   ├── domain-packs.md             # 62 条领域线索种子库
+│   ├── conventions.md              # 共通守则、PS5.1 陷阱规避与 §overlay 字段唯一权威表
+│   ├── domain-packs.md             # 62 条领域线索种子库（紧凑表格索引）
 │   ├── execution-safety.md         # 两段式执行、预览、回退与三栏删除验收规程
 │   ├── memory-hygiene.md           # Stage 18 记忆与文档五层寿命治理
 │   └── stage-00 ~ stage-17         # 系统面 18 个阶段细则（stage-00-bootstrap.md ~ stage-17-media.md）
-├── scripts/                        # PS 5.1 兼容只读工具集（全部 UTF-8 BOM）
-│   ├── bootstrap-probe.ps1         # 首跑只读探测与 schema 1.1 基线生成器
-│   ├── baseline-check.ps1          # 基线结构机械门（无 Test-Json 依赖，支持 -WarnPct/-CritPct）
-│   ├── project-doctor.ps1          # Git 备份事实链巡检 v1.9（支持 -Baseline / -SaveBaseline）
-│   ├── doc-hygiene.ps1             # Stage 18 Markdown 文档膨胀只读扫描
-│   └── measure-space-delta.ps1     # 删除验收三栏空间增量测量器（FreeSpace + $Recycle.Bin）
-├── tests/                          # 回归测试与负对照套件（PS 5.1 实跑 89 断言）
-│   ├── test-backup-scoring.ps1     # doctor 备份评分反例与缓存/大小写回归（45 断言）
-│   ├── test-baseline-schema.ps1    # 基线结构门正反例回归（27 断言）
-│   └── test-agent-helpers.ps1      # bootstrap-probe 与 measure-space-delta 回归（17 断言）
+├── scripts/                        # PS 5.1 兼容只读工具集（全部 UTF-8 BOM，公开包共 3 份）
+│   ├── probe.ps1                   # 四合一只读探测工具（-Action env / space / docs / delta）
+│   ├── baseline-check.ps1          # 基线结构机械门（无 Test-Json 依赖，含 network 节与自定义阈值校验）
+│   └── project-doctor.ps1          # Git 备份事实链巡检 v1.9（支持 -Baseline / -SaveBaseline）
+├── tests/                          # 回归测试与负对照套件（PS 5.1 实跑，断言总数见首屏）
+│   ├── test-backup-scoring.ps1     # doctor 备份评分反例与缓存/大小写回归
+│   ├── test-baseline-schema.ps1    # 基线结构门与可选 network 节正反例回归
+│   └── test-agent-helpers.ps1      # probe.ps1 四动作（env / space / docs / delta）回归
 └── docs/
     └── design/execution-safety.md  # 预览、隔离区、操作日志与空间增量完整设计书
 ```
 
 | 脚本 | 核心能力 | 面向 Agent 的防踩坑特性 |
 |---|---|---|
-| `scripts/bootstrap-probe.ps1` | 只读探测 OS/权限/LanguageMode/KFM 云重定向/杀软进程/卷空间，并安全枚举指定目录生成 `baseline-YYYYMMDD.json` | 不传 `-Roots`/`-TopDirs` 绝不扫盘；PS 5.1 `EnumerateFileSystemInfos` 跳过 `ReparsePoint`；单目录默认 20 万文件上限截断并标 `partial`；失败显式记 `failed` |
-| `scripts/baseline-check.ps1` | 机械校验基线 JSON 必填六节、带时区时间戳、数值型 `free_pct`、红线自洽、`owner_note` 与 `scan_status` | 不依赖 PS 6.1+ `Test-Json`；拦截 `files=0 && bytes>0` 假账目与 `scan_status=failed`；支持 `-WarnPct`/`-CritPct` 传入自定义阈值 |
+| `scripts/probe.ps1` | 四合一只读探测（`-Action env \| space \| docs \| delta`）：环境/卷建档、安全目录枚举与合并、Markdown 膨胀扫描、删除三栏空间增减测算 | `-Action env` 默认不扫盘；PS 5.1 `EnumerateFileSystemInfos` 跳过 `ReparsePoint` 与 `-MaxFilesPerDir` 截断标 `partial`；`-Action docs` 只读统计；`-Action delta` 单引号保护 `'$Recycle.Bin'` 拦截假成功 |
+| `scripts/baseline-check.ps1` | 机械校验基线 JSON 必填六节、带时区时间戳、数值型 `free_pct`、红线自洽、`owner_note`、`scan_status` 与可选 `network` 链路基线 | 不依赖 PS 6.1+ `Test-Json`；拦截 `files=0 && bytes>0`、`scan_status=failed` 与 `loss_pct` 越界；支持 `-WarnPct`/`-CritPct` |
 | `scripts/project-doctor.ps1` | 扫描项目根目录下的 Git 仓库与非 Git 目录，按备份事实链输出 A/B/C/D/X 分级表、隐私检查与跨轮基线 diff | 15 秒进程级 `ls-remote` 超时；自指远端五种形态统一身份拦截；`-Baseline` 无快照时显式报「无基线，本轮不判趋势」；`-SaveBaseline` 仅补 `snapshots.doctor` |
-| `scripts/doc-hygiene.ps1` | 只读统计各目录 `.md` 数量、体量、30/90 天陈旧率与最大行数，给出蒸馏/归档/退役建议 | 自动跳过 `node_modules` / `.git` / 构建产物目录；严格只读 |
-| `scripts/measure-space-delta.ps1` | 在删除/清理批前后分别采样卷 `FreeSpace` 与 `$Recycle.Bin` 体量，输出三栏账目与判定 | 用单引号保护 `'$Recycle.Bin'` 避免 `$Recycle` 变量展开；检测跨用户 SID `Access Denied` 受限；自动判出「未释放，空间在回收站」假成功 |
 
 ---
 
-### 3. 19 个审计阶段全览
+### 3. 19 个审计阶段全览（唯一阶段表，改这里）
 
-| # | 阶段 | 核心检查内容 | 对应文档 |
+> 默认分层执行策略：**Tier 1 必查（6）**=`00/02/04/07/11/13` · **Tier 2 按角色（7）**=`05/06/09/10/15/16/17` · **Tier 3 按信号触发（6）**=`01/03/08/12/14/18`（`quick` 跑 Tier 1，`full` 跑 Tier 1+2）。
+
+| # | 阶段（层级） | 核心检查内容 | 对应文档 |
 |---|---|---|---|
-| 00 | Bootstrap | 环境与权限探测、角色/领域识别、生成 `overlay.yaml` 与首轮基线（首轮照常判当前风险） | `references/stage-00-bootstrap.md` |
-| 01 | 硬件与固件 | 硬件型号、内存频率差值、磁盘固件与驱动过时检测 | `references/stage-01-hardware.md` |
-| 02 | 磁盘空间账目 | 红线判定、系统盘根目录白名单、热点下钻、安装包识别、PS 5.1 安全枚举与增量口径 | `references/stage-02-disk.md` |
-| 03 | 磁盘规则符合度 | 按可选 `rules_file` 校验前缀/冻结名单/快照超期；无规则时仅做通用命名观察 | `references/stage-03-rules.md` |
-| 04 | 开发环境 | 运行时版本矩阵、PATH 失效检查、Git/代理身份与凭据台账（五要素定级） | `references/stage-04-dev-env.md` |
-| 05 | 虚拟化 | WSL 登记与注册表一致性、VBox/Hyper-V/模拟器实体与 vhdx 体量 | `references/stage-05-virtualization.md` |
-| 06 | 软件服务自启 diff | 卸载表、系统服务、自启项与计划任务相对基线的变化 | `references/stage-06-software-diff.md` |
-| 07 | 安全态势 | Defender/AV 防护状态、防火墙暴露面、监听端口进程溯源、SMB 共享与远程面 | `references/stage-07-security.md` |
-| 08 | 持久化与劫持 | IFEO、WMI 订阅、浏览器策略、PAC、第三方根证书与 AppInit_DLLs（条件化定级） | `references/stage-08-persistence.md` |
-| 09 | 事件日志四查 | System 7 天错误、应用崩溃/.NET 堆栈、PSCore、与 `overlay.noise` 基线 diff | `references/stage-09-logs.md` |
-| 10 | Agent 与 CLI 盘点 | AI Agent 数据目录矩阵（`agent_dirs_extra`）、凭据与同步通道交叉、沙箱账户核对 | `references/stage-10-agents.md` |
-| 11 | 备份合规 | Git 同步事实链（`project-doctor.ps1`）+ 核心资产 3-2-1 评估与还原点检查 | `references/stage-11-backup.md` |
-| 12 | 终端健康 | `pwsh`/Windows Terminal/cmd/Git Bash/VS Code 终端配置与启动健壮性 | `references/stage-12-terminals.md` |
-| 13 | 报告与 diff | 两段式报告（技术段 + 人话段）、覆盖状态表、四类记录、关系链检查与双写 SHA256 校验 | `references/stage-13-report.md` |
-| 14 | 性能基准（可选） | 只读基线采样；写盘压测默认关闭，须单独授权 | `references/stage-14-benchmark.md` |
-| 15 | 残留净化复查 | 双桌面死快捷方式、死服务、死卸载/自启、空壳/孤儿目录、拒绝型 ACL、零使用服务四重证据 | `references/stage-15-residue.md` |
-| 16 | 网络 / VPN / 远端 | 代理栈、组网安全位、WSL NAT/mirrored、手写配置文件（`overlay.configs`）漂移台账 | `references/stage-16-network.md` |
-| 17 | 媒体 / 相册治理 | 原片完整性、3-2-1 冷备、catalog 代数、重复副本与检索层选型 | `references/stage-17-media.md` |
-| 18 | 记忆与文档卫生 | L0–L4 五层寿命模型、15 轮/200 份硬触发、先蒸馏后退役、`doc-hygiene.ps1` 扫描 | `references/memory-hygiene.md` |
+| 00 | Bootstrap（T1） | 环境与权限探测、角色/领域识别、生成 `overlay.yaml` 与首轮基线（`probe.ps1 -Action env\|space`） | `references/stage-00-bootstrap.md` |
+| 01 | 硬件与固件（T3） | 硬件型号、内存频率差值、磁盘固件与驱动过时检测 | `references/stage-01-hardware.md` |
+| 02 | 磁盘空间账目（T1） | 红线判定、系统盘根目录白名单、热点下钻、安装包识别、PS 5.1 安全枚举与增量口径 | `references/stage-02-disk.md` |
+| 03 | 磁盘规则符合度（T3） | 按可选 `rules_file` 校验前缀/冻结名单/快照超期；无规则时仅做通用命名观察 | `references/stage-03-rules.md` |
+| 04 | 开发环境（T1） | 运行时版本矩阵、PATH 失效检查、Git/代理身份、凭据台账（五要素）与 **CLI 登录三态体检** | `references/stage-04-dev-env.md` |
+| 05 | 虚拟化（T2） | WSL 登记与注册表一致性、VBox/Hyper-V/模拟器实体与 vhdx 体量 | `references/stage-05-virtualization.md` |
+| 06 | 软件服务自启 diff（T2） | 卸载表、系统服务、自启项与计划任务相对基线的变化 | `references/stage-06-software-diff.md` |
+| 07 | 安全态势（T1） | Defender/AV 防护状态、防火墙暴露面、监听端口进程溯源、SMB 共享与远程面 | `references/stage-07-security.md` |
+| 08 | 持久化与劫持（T3） | IFEO、WMI 订阅、浏览器策略、PAC、第三方根证书与 AppInit_DLLs（条件化定级） | `references/stage-08-persistence.md` |
+| 09 | 事件日志四查（T2） | System 7 天错误、应用崩溃/.NET 堆栈、PSCore、与 `overlay.noise` 基线 diff | `references/stage-09-logs.md` |
+| 10 | Agent 与 CLI 盘点（T2） | AI Agent 数据目录矩阵（`agent_dirs_extra`）、凭据与同步通道交叉、沙箱账户核对 | `references/stage-10-agents.md` |
+| 11 | 备份合规（T1） | Git 同步事实链（`project-doctor.ps1`）+ 核心资产 3-2-1 评估与还原点检查 | `references/stage-11-backup.md` |
+| 12 | 终端健康（T3） | `pwsh`/Windows Terminal/cmd/Git Bash/VS Code 终端配置与启动健壮性 | `references/stage-12-terminals.md` |
+| 13 | 报告与 diff（T1） | 两段式报告（技术段 + 人话段）、覆盖状态表、四类记录、关系链检查与双写 SHA256 校验 | `references/stage-13-report.md` |
+| 14 | 性能基准（T3 · 可选） | 只读基线采样；写盘压测默认关闭，须单独授权 | `references/stage-14-benchmark.md` |
+| 15 | 残留净化复查（T2） | 双桌面死快捷方式、死服务、死卸载/自启、空壳/孤儿目录、拒绝型 ACL、零使用服务四重证据 | `references/stage-15-residue.md` |
+| 16 | 网络 / VPN / 远端（T2） | 代理栈、组网安全位、WSL NAT/mirrored、手写配置（`configs`）漂移与 **§8 三目标链路基线** | `references/stage-16-network.md` |
+| 17 | 媒体 / 相册治理（T2） | 原片完整性、3-2-1 冷备、catalog 代数、重复副本与检索层选型 | `references/stage-17-media.md` |
+| 18 | 记忆与文档卫生（T3） | L0–L4 五层寿命模型、15 轮/200 份硬触发、先蒸馏后退役、`probe.ps1 -Action docs` 扫描 | `references/memory-hygiene.md` |
 
 ---
 
@@ -123,31 +121,33 @@ machine-audit/
 #### 4.2 标准工作流命令（Windows PowerShell 5.1+）
 
 ```powershell
-# 1. 首跑建档：自动探测环境与目标根目录，生成符合 schema 1.1 的基线 JSON 与 MD
+# 1. 首跑建档：采集环境与卷账目（schema 1.2），并枚举目标目录写入 top_dirs
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\bootstrap-probe.ps1' -Roots @('D:\MyProjects') -OutDir 'D:\AuditOut' -WriteMarkdown"
+  "& '.\scripts\probe.ps1' -Action env -OutDir 'D:\AuditOut' -WriteMarkdown"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
+  "& '.\scripts\probe.ps1' -Action space -Roots @('D:\MyProjects') -Baseline 'D:\AuditOut\baseline-20261117.json' -WriteMarkdown"
 
 # 2. 基线结构机械门（自定义阈值时传入 -WarnPct / -CritPct）
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\baseline-check.ps1 `
-  -Path D:\AuditOut\baseline-20261116.json -WarnPct 15 -CritPct 10
+  -Path D:\AuditOut\baseline-20261117.json -WarnPct 15 -CritPct 10
 
 # 3. 写入首轮 Git 快照到同一份基线（避免次轮 -Baseline 报"无基线"）
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -SaveBaseline 'D:\AuditOut\baseline-20261116.json'"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\baseline-check.ps1 -Path D:\AuditOut\baseline-20261116.json
+  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -SaveBaseline 'D:\AuditOut\baseline-20261117.json'"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\baseline-check.ps1 -Path D:\AuditOut\baseline-20261117.json
 
 # 4. 后续复核：带趋势 diff 运行 project-doctor
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -Baseline 'D:\AuditOut\baseline-20261116.json' -SaveBaseline 'D:\AuditOut\baseline-20261123.json'"
+  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -Baseline 'D:\AuditOut\baseline-20261117.json' -SaveBaseline 'D:\AuditOut\baseline-20261124.json'"
 
 # 5. 文档卫生巡检（Stage 18）
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\doc-hygiene.ps1' -Roots @('D:\MyProjects') -OutFile 'D:\AuditOut\hygiene.md'"
+  "& '.\scripts\probe.ps1' -Action docs -Roots @('D:\MyProjects') -OutFile 'D:\AuditOut\hygiene.md'"
 ```
 
 > **Agent 防踩坑提示**：
 > - **PowerShell `-File` 数组参数陷阱**：在 `powershell.exe -File script.ps1 -Roots "A","B"` 模式下，只有第一个值 `"A"` 会绑定进 `[string[]]$Roots`，第二个值会被静默丢弃！传多个根目录必须使用 `-Command "& '...' -Roots @('A','B')"`。
-> - **禁止 `System.IO.EnumerationOptions`**：该类型在 PowerShell 5.1（.NET 4.x）不存在；枚举目录请使用 `scripts/bootstrap-probe.ps1` 或 `references/stage-02-disk.md` 的 `EnumerateFileSystemInfos` 2 参实现。
+> - **禁止 `System.IO.EnumerationOptions`**：该类型在 PowerShell 5.1（.NET 4.x）不存在；枚举目录请使用 `scripts/probe.ps1 -Action space` 或 `references/stage-02-disk.md` 的 `EnumerateFileSystemInfos` 2 参实现。
 > - **自然语言触发**：对 Agent 说「整机体检」「跑一遍 machine-audit」「电脑变卡了」「删这些之前先检查」「按计划清理」「复查 diff」即可按 `SKILL.md` 自动进入对应模式（`bootstrap` / `quick` / `full` / `execute` / `maintain`）。
 
 ---
@@ -167,7 +167,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
 > **该机制尚未脚本化（`invoke-plan.ps1` / `rollback.ps1` 等执行器尚未实现）：以上为设计中的调用约定；当前需按 `references/execution-safety.md` 规程手工执行。**
 
 - **已实现并有自动化验证的机制**：
-  - 删除三栏空间增量验收工具（`scripts/measure-space-delta.ps1`）：在清理批前后采集并输出「逻辑释放 X GB / 实测释放 Y GB / 回收站 Z GB」，防止文件移入 `$Recycle.Bin` 后原路径消失造成的"假成功"。
+  - 删除三栏空间增量验收工具（`scripts/probe.ps1 -Action delta`）：在清理批前后采集并输出「逻辑释放 X GB / 实测释放 Y GB / 回收站 Z GB」，防止文件移入 `$Recycle.Bin` 后原路径消失造成的"假成功"。
   - 完整设计规范见 [`docs/design/execution-safety.md`](docs/design/execution-safety.md) 与 [`references/execution-safety.md`](references/execution-safety.md)。
 - **尚未实现的自动化执行器（诚实声明）**：
   - `scripts/invoke-plan.ps1`（计划消费、隔离区移动、`operations.jsonl` 自动写回与指纹校验）**尚未实现**。
@@ -186,23 +186,23 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
 | **杀软 / CLM / 云占位 / 乱码 / 超长路径** | 有显式降级、跳过属性（`ReparsePoint` / `RecallOnDataAccess`）与受限声明，无静默吞错 |
 | **macOS / Linux** | 语义模型已跨平台通用；命令投影为 `v1.0` 路线 |
 
-#### 6.2 自动化测试（89 条断言，PS 5.1 实跑）
+#### 6.2 自动化测试（PS 5.1 实跑，断言总数见首屏）
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-backup-scoring.ps1   # doctor 评分：45 断言
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-baseline-schema.ps1  # 基线结构门：27 断言（v0.8.0 为 17）
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-agent-helpers.ps1    # Agent 辅助脚本：17 断言
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-backup-scoring.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-baseline-schema.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-agent-helpers.ps1
 ```
 
-- `test-backup-scoring.ps1`（**45 断言**）：覆盖各类对抗性边界反例（无远端 / 远端已删 / `.gitignore` 唯一资产 / 远端回退 / 空远端 / 无上游 / 索引损坏 / `Main/main` 大小写并存 / 自指远端五种形态 / 本地 `.` 上游 / 陈旧缓存不降级）+ 健康对照 + 报告完整性 + 阈值自检；`try/finally` 自清理 `%TEMP%` 并断言无残留。
-- `test-baseline-schema.ps1`（**27 断言**）：专测结构门自身——正例通过；`free_pct` 字符串、空 `owner_note`、缺节、无毫秒 `run_id`、`redline` 矛盾、非管理员无受限登记、`sampled=false && files=0 && bytes>0`、`scan_status=failed`、`partial && !sampled`、`-CritPct 20` 自定义阈值与缺失文件，全部必须 FAIL 且精准定位字段。
-- `test-agent-helpers.ps1`（**17 断言**）：专测 `bootstrap-probe.ps1`（1MB + 空目录 + junction 跳过 + `MaxFilesPerDir` 截断标 `partial` + 缺失路径标 `failed` 并被门禁拒绝）与 `measure-space-delta.ps1`（快照、`QuarantineMode`、50MB 进回收站负对照判「未释放」、500MB 实增正对照判「已释放」、非法盘符）。
+- `test-backup-scoring.ps1`：覆盖各类对抗性边界反例（无远端 / 远端已删 / `.gitignore` 唯一资产 / 远端回退 / 空远端 / 无上游 / 索引损坏 / `Main/main` 大小写并存 / 自指远端五种形态 / 本地 `.` 上游 / 陈旧缓存不降级）+ 健康对照 + 报告完整性 + 阈值自检；`try/finally` 自清理 `%TEMP%` 并断言无残留。
+- `test-baseline-schema.ps1`：专测结构门自身——正例通过（含可选 `network` 节）；`free_pct` 字符串、空 `owner_note`、缺节、无毫秒 `run_id`、`redline` 矛盾、非管理员无受限登记、`sampled=false && files=0 && bytes>0`、`scan_status=failed`、`partial && !sampled`、`-CritPct 20` 自定义阈值、`network.targets` 为空、`network` 越界指标与缺失文件，全部必须 FAIL 且精准定位字段。
+- `test-agent-helpers.ps1`：全面覆盖 `scripts/probe.ps1` 四动作——`-Action env`（schema 1.2 + MD 视图）、`-Action space`（1MB + 空目录 + junction 跳过 + `MaxFilesPerDir` 截断标 `partial` + 缺失路径标 `failed` 被门禁拒绝 + 独立 JSON 输出）、`-Action docs`（只读文档阈值扫描）与 `-Action delta`（Snapshot、`QuarantineMode`、50MB 进回收站负对照、500MB 实增正对照、非法盘符）。
 
 #### 6.3 已知限制与路线图
 
 - **当前已知限制**：`project-doctor.ps1` 全局 `SilentlyContinue` 的错误吞噬限制已如实声明；`ls-remote` 采用 15s 进程级超时；两段式执行器（`invoke-plan.ps1` / `rollback.ps1`）、L2 预览生成器与宽限期管理**尚未脚本化**；仅支持 Windows（macOS/Linux 命令投影待写）；除阶段 00/02/11/13/18 配套脚本外，其余系统面阶段以规范引导人工/Agent 采样为主。
-- **v0.8.1（当前）**：修复 `stage-02` PS 5.1 枚举兼容与显式 `failed`；去掉 `baseline-check.ps1` 恒真断言并新增 `scan_status` 与 `-WarnPct`/`-CritPct`；schema 升 `1.1`；补 `conventions.md §overlay 字段表` 与 `noise: []`；新增 `bootstrap-probe.ps1` 与 `measure-space-delta.ps1`；完善中英双语公开版文档结构；89 条断言全过（45 + 27 + 17）。
-- **v0.9**：执行器脚本化（`invoke-plan.ps1` / `rollback.ps1`，当前尚未实现）、L2 预览生成器、隔离区宽限期管理、其余阶段的最小断言补齐。
+- **v0.9.0（当前）**：`SKILL.md` 改为 Tier 1/2/3 分层与 17 项信号路由；剥离重复清单；`stage-02`/`15`/`execution-safety` 完成故事与判据分离；公开脚本 5 合 3（统一 `scripts/probe.ps1`）；新增 `stage-04` CLI 登录体检与 `stage-16 §8` 链路基线（`schema 1.2` + `network` 节校验）。
+- **v0.9.x**：执行器脚本化（`invoke-plan.ps1` / `rollback.ps1`，当前尚未实现）、L2 预览生成器、隔离区宽限期管理、其余阶段的最小断言补齐。
 - **v1.0**：macOS/Linux 命令投影、多场景执行回归、更多领域包。
 
 ---
@@ -247,68 +247,66 @@ Facts & Risks (Read-Only) → Concrete Plan → Preview & Approval Gate → Prec
 
 ```text
 machine-audit/
-├── SKILL.md                        # Agent skill specification (v0.8.1: roles, iron rules, gates, cheat sheet)
-├── README.md                       # Bilingual documentation (Chinese / English)
+├── SKILL.md                        # Agent skill specification (v0.9.0: when to use, 5 iron rules, tiered routing, output shape)
+├── README.md                       # Bilingual documentation (Chinese / English; single stage table & total assertion count)
 ├── CHANGELOG.md                    # Release history
 ├── LICENSE                         # MIT License
 ├── .gitignore                      # Ignores per-machine private artifacts (overlay/baseline/reports)
-├── assets/                         # Authoritative config & baseline templates (v0.8+)
-│   ├── overlay.template.yaml       # Per-machine parameter template (18 top-level keys)
-│   ├── baseline.schema.json        # Baseline JSON Schema (v1.1: 6 fixed sections + meta + snapshots)
+├── assets/                         # Authoritative config & baseline templates
+│   ├── overlay.template.yaml       # Per-machine parameter template (18 top-level keys; semantics in conventions.md)
+│   ├── baseline.schema.json        # Baseline JSON Schema (v1.2: 6 fixed sections + meta + optional snapshots/network)
 │   └── baseline.template.md        # Human-readable baseline view (JSON is authoritative on mismatch)
 ├── references/                     # Stage SOPs & domain knowledge
-│   ├── conventions.md              # Cross-stage guardrails, PS 5.1 traps & §overlay field reference
-│   ├── domain-packs.md             # 62 domain cue seed packs
+│   ├── conventions.md              # Cross-stage guardrails, PS 5.1 traps & authoritative §overlay field table
+│   ├── domain-packs.md             # 62 domain cue seed packs (compact table index)
 │   ├── execution-safety.md         # Two-phase execution, preview, rollback & 3-column deletion SOP
 │   ├── memory-hygiene.md           # Stage 18 5-tier document lifecycle model
 │   └── stage-00 ~ stage-17         # 18 system audit stage specifications (stage-00-bootstrap.md ~ stage-17-media.md)
-├── scripts/                        # PS 5.1-compatible read-only helpers (UTF-8 with BOM)
-│   ├── bootstrap-probe.ps1         # Read-only bootstrap collector producing schema-1.1 baseline JSON/MD
-│   ├── baseline-check.ps1          # Mechanical baseline gate (PS 5.1 safe, no Test-Json, -WarnPct/-CritPct)
-│   ├── project-doctor.ps1          # Git backup fact-chain auditor v1.9 (-Baseline / -SaveBaseline)
-│   ├── doc-hygiene.ps1             # Read-only Stage 18 Markdown bloat & age scanner
-│   └── measure-space-delta.ps1     # 3-column deletion space verifier (FreeSpace + $Recycle.Bin delta)
-├── tests/                          # PS 5.1 regression & negative-control suites (89 assertions total)
-│   ├── test-backup-scoring.ps1     # Adversarial backup-scoring counterexamples, cache invariance & case collision (45 assertions)
-│   ├── test-baseline-schema.ps1    # Mechanical gate positive/negative controls (27 assertions)
-│   └── test-agent-helpers.ps1      # bootstrap-probe & measure-space-delta verification (17 assertions)
+├── scripts/                        # PS 5.1-compatible read-only helpers (UTF-8 BOM, 3 public scripts)
+│   ├── probe.ps1                   # Unified 4-in-1 read-only helper (-Action env / space / docs / delta)
+│   ├── baseline-check.ps1          # Mechanical baseline gate (PS 5.1 safe, no Test-Json, network + custom thresholds)
+│   └── project-doctor.ps1          # Git backup fact-chain auditor v1.9 (-Baseline / -SaveBaseline)
+├── tests/                          # PS 5.1 regression & negative-control suites (total assertions in header banner)
+│   ├── test-backup-scoring.ps1     # Adversarial backup-scoring counterexamples, cache invariance & case collision
+│   ├── test-baseline-schema.ps1    # Mechanical gate positive/negative controls (incl. optional network section)
+│   └── test-agent-helpers.ps1      # probe.ps1 four-action verification (env / space / docs / delta)
 └── docs/
     └── design/execution-safety.md  # Detailed design spec for previews, quarantine, journal & space accounting
 ```
 
 | Script | Capabilities | Agent-Safety Guardrails |
 |---|---|---|
-| `scripts/bootstrap-probe.ps1` | Collects OS, admin privilege, `LanguageMode`, KFM redirection, AV processes, disk volumes, and bounded directory sizes into schema-1.1 `baseline-YYYYMMDD.json` | Refuses default full-disk scans (empty `top_dirs` if no `-Roots`/`-TopDirs` passed); uses PS 5.1-safe `EnumerateFileSystemInfos` skipping `ReparsePoint`; truncates at `-MaxFilesPerDir` (`partial`) and marks errors explicitly as `failed` |
-| `scripts/baseline-check.ps1` | Validates required 6 sections, timezone-offset ISO timestamps, numeric `free_pct`, redline consistency, `owner_note`, and `scan_status` | No PS 6.1+ `Test-Json` dependency; rejects `sampled=false && files=0 && bytes>0` and `scan_status="failed"`; accepts `-WarnPct` and `-CritPct` from `overlay.yaml` |
+| `scripts/probe.ps1` | Unified read-only probe (`-Action env \| space \| docs \| delta`): env/volume bootstrap, bounded directory sizing, Markdown bloat scan & 3-column deletion delta | `-Action env` skips disk walks by default; `-Action space` uses PS 5.1 `EnumerateFileSystemInfos` skipping `ReparsePoint`, truncates at `-MaxFilesPerDir` (`partial`) & marks errors `failed`; `-Action docs` is read-only; `-Action delta` single-quotes `'$Recycle.Bin'` |
+| `scripts/baseline-check.ps1` | Validates required 6 sections, timezone-offset ISO timestamps, numeric `free_pct`, redline consistency, `owner_note`, `scan_status` & optional `network` baseline | No PS 6.1+ `Test-Json` dependency; rejects `sampled=false && files=0 && bytes>0`, `scan_status="failed"` & out-of-range `loss_pct`; supports `-WarnPct` / `-CritPct` |
 | `scripts/project-doctor.ps1` | Audits Git repos and non-Git folders across target roots with A/B/C/D/X grading, email/secret checks, and baseline diffs | 15s process-level `ls-remote` timeout; detects 5 self-referential remote patterns; outputs explicit "no baseline" when snapshots are absent; `-SaveBaseline` updates only `snapshots.doctor` |
-| `scripts/doc-hygiene.ps1` | Scans `.md` count, size, >30d/>90d age ratios, and max line counts per top directory with distill/archive/retire advice | Skips `node_modules`, `.git`, and build artifacts; strictly read-only |
-| `scripts/measure-space-delta.ps1` | Snapshots `Win32_LogicalDisk.FreeSpace` and `$Recycle.Bin` before/after a cleanup batch and computes the 3-column verdict | Single-quotes `'$Recycle.Bin'` to prevent `$Recycle` variable expansion; detects cross-SID `Access Denied` restrictions; catches Recycle-Bin false successes |
 
 ---
 
-### 3. The 19 Audit Stages (00–18)
+### 3. The 19 Audit Stages (00–18) — Single Authoritative Stage Table
 
-| # | Stage | Scope | Reference |
+> Default tiered execution scope: **Tier 1 Always (6)**=`00/02/04/07/11/13` · **Tier 2 Role-Based (7)**=`05/06/09/10/15/16/17` · **Tier 3 Signal-Triggered (6)**=`01/03/08/12/14/18` (`quick`=Tier 1, `full`=Tier 1+2).
+
+| # | Stage (Tier) | Scope | Reference |
 |---|---|---|---|
-| 00 | Bootstrap | Environment & privilege probe, role/domain detection, `overlay.yaml` & initial baseline (grades current risks on first run) | `references/stage-00-bootstrap.md` |
-| 01 | Hardware & Firmware | Device model, RAM speed mismatch, disk firmware & outdated driver checks | `references/stage-01-hardware.md` |
-| 02 | Disk Space Accounting | Redline checks, system root whitelist, hotspot drilldown, installer detection, PS 5.1 safe enumeration & incremental scans | `references/stage-02-disk.md` |
-| 03 | Disk Rule Compliance | Validates naming/structure/snapshot retention against optional `rules_file`; advisory naming checks when unconfigured | `references/stage-03-rules.md` |
-| 04 | Dev Environment | Runtime version matrix, PATH health, Git/proxy identity & credential inventory (5-element grading) | `references/stage-04-dev-env.md` |
-| 05 | Virtualization | WSL registry vs `wsl -l -v` parity, VBox/Hyper-V/emulators & `.vhdx` footprint | `references/stage-05-virtualization.md` |
-| 06 | Software & Autorun Diff | Uninstall entries, services, startup items & scheduled tasks diffed against baseline | `references/stage-06-software-diff.md` |
-| 07 | Security Posture | Defender/AV status, firewall exposure, listening port process attribution, SMB shares & remote surfaces | `references/stage-07-security.md` |
-| 08 | Persistence & Hijacking | IFEO, WMI subscriptions, browser policies, PAC, third-party root CAs & AppInit_DLLs (conditional grading) | `references/stage-08-persistence.md` |
-| 09 | Event Log 4-Way Check | 7-day System errors, App crashes + `.NET Runtime` stacks, PSCore, diffed against `overlay.noise` | `references/stage-09-logs.md` |
-| 10 | Agent & CLI Inventory | AI agent data footprint (`agent_dirs_extra`), credential-vs-sync overlap checks & sandbox accounts | `references/stage-10-agents.md` |
-| 11 | Backup Compliance | Git sync fact chain (`project-doctor.ps1`) + 3-2-1 evaluation for `overlay.assets` & restore points | `references/stage-11-backup.md` |
-| 12 | Terminal Health | `pwsh`, Windows Terminal, `cmd`, Git Bash & VS Code integrated terminal diagnostics | `references/stage-12-terminals.md` |
-| 13 | Report & Baseline Diff | Two-part report (technical + plain-language), coverage matrix, 4-class records, cross-system chains & SHA256 mirror verification | `references/stage-13-report.md` |
-| 14 | Benchmarks (Optional) | Read-only baseline metrics; write benchmarks disabled unless explicitly authorized | `references/stage-14-benchmark.md` |
-| 15 | Residue Audit | Dual-Desktop dead shortcuts, dead services/uninstall/tasks, orphan/empty dirs, Deny ACLs & 4-evidence zero-use services | `references/stage-15-residue.md` |
-| 16 | Network / VPN / Remotes | Proxy stack, mesh/VPN security bits, WSL NAT/mirrored & `overlay.configs` drift tracking | `references/stage-16-network.md` |
-| 17 | Media & Photo Governance | RAW integrity, 3-2-1 cold backup, catalog generation tracking, duplicate copies & search layer sizing | `references/stage-17-media.md` |
-| 18 | Memory & Doc Hygiene | 5-tier document lifespan (`L0–L4`), 15-turn / >200-file hard triggers, distill-before-retire & `doc-hygiene.ps1` | `references/memory-hygiene.md` |
+| 00 | Bootstrap (T1) | Environment & privilege probe, role/domain detection, `overlay.yaml` & initial baseline (`probe.ps1 -Action env\|space`) | `references/stage-00-bootstrap.md` |
+| 01 | Hardware & Firmware (T3) | Device model, RAM speed mismatch, disk firmware & outdated driver checks | `references/stage-01-hardware.md` |
+| 02 | Disk Space Accounting (T1) | Redline checks, system root whitelist, hotspot drilldown, installer detection, PS 5.1 safe enumeration & incremental scans | `references/stage-02-disk.md` |
+| 03 | Disk Rule Compliance (T3) | Validates naming/structure/snapshot retention against optional `rules_file`; advisory naming checks when unconfigured | `references/stage-03-rules.md` |
+| 04 | Dev Environment (T1) | Runtime matrix, PATH health, Git/proxy identity, credential inventory (5-element grading) & **3-state CLI login check** | `references/stage-04-dev-env.md` |
+| 05 | Virtualization (T2) | WSL registry vs `wsl -l -v` parity, VBox/Hyper-V/emulators & `.vhdx` footprint | `references/stage-05-virtualization.md` |
+| 06 | Software & Autorun Diff (T2) | Uninstall entries, services, startup items & scheduled tasks diffed against baseline | `references/stage-06-software-diff.md` |
+| 07 | Security Posture (T1) | Defender/AV status, firewall exposure, listening port process attribution, SMB shares & remote surfaces | `references/stage-07-security.md` |
+| 08 | Persistence & Hijacking (T3) | IFEO, WMI subscriptions, browser policies, PAC, third-party root CAs & AppInit_DLLs (conditional grading) | `references/stage-08-persistence.md` |
+| 09 | Event Log 4-Way Check (T2) | 7-day System errors, App crashes + `.NET Runtime` stacks, PSCore, diffed against `overlay.noise` | `references/stage-09-logs.md` |
+| 10 | Agent & CLI Inventory (T2) | AI agent data footprint (`agent_dirs_extra`), credential-vs-sync overlap checks & sandbox accounts | `references/stage-10-agents.md` |
+| 11 | Backup Compliance (T1) | Git sync fact chain (`project-doctor.ps1`) + 3-2-1 evaluation for `overlay.assets` & restore points | `references/stage-11-backup.md` |
+| 12 | Terminal Health (T3) | `pwsh`, Windows Terminal, `cmd`, Git Bash & VS Code integrated terminal diagnostics | `references/stage-12-terminals.md` |
+| 13 | Report & Baseline Diff (T1) | Two-part report (technical + plain-language), coverage matrix, 4-class records, cross-system chains & SHA256 mirror verification | `references/stage-13-report.md` |
+| 14 | Benchmarks (T3 · Optional) | Read-only baseline metrics; write benchmarks disabled unless explicitly authorized | `references/stage-14-benchmark.md` |
+| 15 | Residue Audit (T2) | Dual-Desktop dead shortcuts, dead services/uninstall/tasks, orphan/empty dirs, Deny ACLs & 4-evidence zero-use services | `references/stage-15-residue.md` |
+| 16 | Network / VPN / Remotes (T2) | Proxy stack, mesh/VPN security bits, WSL NAT/mirrored, `overlay.configs` drift & **§8 3-target link baseline** | `references/stage-16-network.md` |
+| 17 | Media & Photo Governance (T2) | RAW integrity, 3-2-1 cold backup, catalog generation tracking, duplicate copies & search layer sizing | `references/stage-17-media.md` |
+| 18 | Memory & Doc Hygiene (T3) | 5-tier document lifespan (`L0–L4`), 15-turn / >200-file hard triggers, distill-before-retire & `probe.ps1 -Action docs` | `references/memory-hygiene.md` |
 
 ---
 
@@ -327,31 +325,33 @@ Always make edits in the source repository and re-sync the installed copy rather
 #### 4.2 Standard Workflow Commands (Windows PowerShell 5.1+)
 
 ```powershell
-# 1. First-run bootstrap: collect environment + target roots into a schema-1.1 baseline
+# 1. First-run bootstrap: collect env + drives into schema-1.2 baseline, then populate top_dirs safely
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\bootstrap-probe.ps1' -Roots @('D:\MyProjects') -OutDir 'D:\AuditOut' -WriteMarkdown"
+  "& '.\scripts\probe.ps1' -Action env -OutDir 'D:\AuditOut' -WriteMarkdown"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
+  "& '.\scripts\probe.ps1' -Action space -Roots @('D:\MyProjects') -Baseline 'D:\AuditOut\baseline-20261117.json' -WriteMarkdown"
 
 # 2. Validate baseline mechanically (pass -WarnPct / -CritPct when customized in overlay.yaml)
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\baseline-check.ps1 `
-  -Path D:\AuditOut\baseline-20261116.json -WarnPct 15 -CritPct 10
+  -Path D:\AuditOut\baseline-20261117.json -WarnPct 15 -CritPct 10
 
 # 3. Seed initial snapshots.doctor into the baseline and re-validate
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -SaveBaseline 'D:\AuditOut\baseline-20261116.json'"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\baseline-check.ps1 -Path D:\AuditOut\baseline-20261116.json
+  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -SaveBaseline 'D:\AuditOut\baseline-20261117.json'"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\baseline-check.ps1 -Path D:\AuditOut\baseline-20261117.json
 
 # 4. Subsequent runs: produce repo diff against prior baseline
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -Baseline 'D:\AuditOut\baseline-20261116.json' -SaveBaseline 'D:\AuditOut\baseline-20261123.json'"
+  "& '.\scripts\project-doctor.ps1' -Roots @('D:\MyProjects','E:\Code') -OutDir 'D:\AuditOut' -Baseline 'D:\AuditOut\baseline-20261117.json' -SaveBaseline 'D:\AuditOut\baseline-20261124.json'"
 
 # 5. Stage 18 document hygiene check
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-  "& '.\scripts\doc-hygiene.ps1' -Roots @('D:\MyProjects') -OutFile 'D:\AuditOut\hygiene.md'"
+  "& '.\scripts\probe.ps1' -Action docs -Roots @('D:\MyProjects') -OutFile 'D:\AuditOut\hygiene.md'"
 ```
 
 > **Agent Gotchas to Avoid**:
 > - **PS 5.1 `-File` array parameter trap**: `powershell.exe -File script.ps1 -Roots "A","B"` binds only `"A"` and silently drops `"B"`. Always use `-Command "& '...' -Roots @('A','B')"` for multi-value `string[]` arguments.
-> - **No `System.IO.EnumerationOptions` on PS 5.1**: That class does not exist in .NET Framework 4.x. Use `scripts/bootstrap-probe.ps1` or the 2-arg `EnumerateFileSystemInfos` loop documented in `references/stage-02-disk.md`.
+> - **No `System.IO.EnumerationOptions` on PS 5.1**: That class does not exist in .NET Framework 4.x. Use `scripts/probe.ps1 -Action space` or the 2-arg `EnumerateFileSystemInfos` loop documented in `references/stage-02-disk.md`.
 > - **Natural-language triggers**: Prompts such as *"PC health check"*, *"run machine-audit"*, *"before-I-delete audit"*, *"apply the cleanup plan"*, or *"re-check after changes"* activate the corresponding mode (`bootstrap` / `quick` / `full` / `execute` / `maintain`).
 
 ---
@@ -370,7 +370,7 @@ Rollback:      rollback replays operations.jsonl in reverse with SHA256 verifica
 > **Not Yet Scripted (`invoke-plan.ps1` / `rollback.ps1` are not yet implemented): the flow above is a design & SOP contract currently executed manually per `references/execution-safety.md`.**
 
 - **Implemented & Verified**:
-  - **3-Column Deletion Space Verifier (`scripts/measure-space-delta.ps1`)**: Measures `FreeSpace` and `$Recycle.Bin` deltas before/after cleanup and prints `Logical X GB / Measured Free Δ Y GB / Recycle Bin Δ Z GB`, blocking false successes caused by Recycle-Bin retention.
+  - **3-Column Deletion Space Verifier (`scripts/probe.ps1 -Action delta`)**: Measures `FreeSpace` and `$Recycle.Bin` deltas before/after cleanup and prints `Logical X GB / Measured Free Δ Y GB / Recycle Bin Δ Z GB`, blocking false successes caused by Recycle-Bin retention.
   - Full design specification in [`docs/design/execution-safety.md`](docs/design/execution-safety.md) and operator SOP in [`references/execution-safety.md`](references/execution-safety.md).
 - **Pending Implementation (Not Yet Scripted)**:
   - `scripts/invoke-plan.ps1` (automated plan consumption, quarantine moves, fingerprint checks & `operations.jsonl` journaling) — **not yet implemented**.
@@ -388,15 +388,15 @@ Rollback:      rollback replays operations.jsonl in reverse with SHA256 verifica
 | **macOS / Linux** | Semantic model is cross-platform; OS command projections planned for `v1.0` |
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-backup-scoring.ps1   # Git backup scoring: 45 assertions
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-baseline-schema.ps1  # Baseline schema gate: 27 assertions (17 in v0.8.0)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-agent-helpers.ps1    # Agent helpers: 17 assertions
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-backup-scoring.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-baseline-schema.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test-agent-helpers.ps1
 ```
 
-- **`test-backup-scoring.ps1` (45 assertions)**: Covers adversarial backup-scoring counterexamples (missing remote, deleted remote, `.gitignore`-only sole asset, force-pushed/rolled-back remote, empty remote, missing upstream, corrupted index, case-colliding `Main/main` packed-refs, 5 self-referential remote forms, local `.` upstream, and stale-cache invariance) plus healthy controls, report integrity, and threshold self-checks, with `try/finally` `%TEMP%` cleanup assertions.
-- **`test-baseline-schema.ps1` (27 assertions)**: Validates the mechanical gate itself—positive control plus negative controls for string `free_pct`, empty `owner_note`, missing sections, non-millisecond `run_id`, redline mismatch, non-admin without restrictions, `sampled=false && files=0 && bytes>0`, `scan_status="failed"` (`meta` and `top_dirs`), `scan_status="partial"` with `sampled=false`, custom `-CritPct 20`, and missing files.
-- **`test-agent-helpers.ps1` (17 assertions)**: Verifies `bootstrap-probe.ps1` (1MB + empty dir + junction skipping, `MaxFilesPerDir` truncation → `partial`, missing path → `failed` rejected by `baseline-check.ps1`) and `measure-space-delta.ps1` (snapshot, `QuarantineMode`, 50MB Recycle-Bin trap negative control, 500MB release positive control, invalid drive handling).
-- **Known Limitations & Roadmap**: `project-doctor.ps1` uses global `SilentlyContinue` (explicitly declared) and a 15s `ls-remote` timeout; `invoke-plan.ps1` / `rollback.ps1`, L2 preview generation, and quarantine grace-period automation are **not yet implemented** (targeted for `v0.9`); macOS/Linux command projections are targeted for `v1.0`.
+- **`test-backup-scoring.ps1`**: Covers adversarial backup-scoring counterexamples (missing remote, deleted remote, `.gitignore`-only sole asset, force-pushed/rolled-back remote, empty remote, missing upstream, corrupted index, case-colliding `Main/main` packed-refs, 5 self-referential remote forms, local `.` upstream, and stale-cache invariance) plus healthy controls, report integrity, and threshold self-checks, with `try/finally` `%TEMP%` cleanup assertions.
+- **`test-baseline-schema.ps1`**: Validates the mechanical gate itself—positive controls (incl. optional `network` section) plus negative controls for string `free_pct`, empty `owner_note`, missing sections, non-millisecond `run_id`, redline mismatch, non-admin without restrictions, `sampled=false && files=0 && bytes>0`, `scan_status="failed"` (`meta` and `top_dirs`), `scan_status="partial"` with `sampled=false`, custom `-CritPct 20`, empty `network.targets`, invalid `loss_pct`/`dns_ms`, and missing files.
+- **`test-agent-helpers.ps1`**: Covers all four `scripts/probe.ps1` actions—`env` (schema 1.2 + Markdown view), `space` (1MB + empty dir + junction skipping, `MaxFilesPerDir` truncation → `partial`, missing path → `failed` rejected by `baseline-check.ps1`, standalone JSON output), `docs` (read-only threshold scan), and `delta` (snapshot, `QuarantineMode`, 50MB Recycle-Bin trap negative control, 500MB release positive control, invalid drive handling).
+- **Known Limitations & Roadmap**: `project-doctor.ps1` uses global `SilentlyContinue` (explicitly declared) and a 15s `ls-remote` timeout; `invoke-plan.ps1` / `rollback.ps1`, L2 preview generation, and quarantine grace-period automation are **not yet implemented** (targeted for `v0.9.x`); macOS/Linux command projections are targeted for `v1.0`.
 
 ---
 

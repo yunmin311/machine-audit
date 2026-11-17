@@ -9,10 +9,10 @@
 
 ```yaml
 # 与 JSON 的 schema_version / meta 一一对应，先填这里
-schema_version: "1.1"
+schema_version: "1.2"
 run_id: "YYYYMMDD-HHmmssfff"
 generated_at: "YYYY-MM-DDTHH:mm:ss+08:00"
-skill_version: "0.8.1"
+skill_version: "0.9.0"
 mode: "bootstrap | quick | full | maintain"
 scan_status: "ok | partial | failed"
 previous_run_id: null
@@ -84,6 +84,10 @@ scope_note: "<本轮覆盖了什么、漏了什么>"
 | 类型 | 范围 | 说明 | 影响阶段 |
 |---|---|---|---|
 | <permission/policy/antivirus/offline/clm/long-path/encoding/unknown> | <哪些盘/目录/操作> | <具体表现> | <02,15> |
+
+## §Network（可选，stage-16 §8）
+
+> 若用户同意执行链路基线采样（固定 3 目标 × 3 次），JSON 中对应写入 `network` 节（`samples_per_target`、`targets[].{target, latency_p50_ms, loss_pct, dns_ms}`）。
 
 ---
 

@@ -217,6 +217,30 @@ if (Has-Prop $b "snapshots") {
   }
 }
 
+# ---- network（可选，schema 1.2 / stage-16 §8 链路基线）----
+if (Has-Prop $b "network") {
+  if (-not $Quiet) { Write-Host "[network]" }
+  $net = $b.network
+  $spOk = ($null -ne $net) -and (Has-Prop $net "samples_per_target") -and (($net.samples_per_target -is [int]) -or ($net.samples_per_target -is [long])) -and ($net.samples_per_target -ge 1)
+  Assert-That $spOk "network.samples_per_target 为正整数"
+  $tgOk = ($null -ne $net) -and (Has-Prop $net "targets") -and ($net.targets -is [array]) -and (@($net.targets).Count -gt 0)
+  Assert-That $tgOk "network.targets 为非空数组"
+  if ($tgOk) {
+    $ni = 0
+    foreach ($nt in @($net.targets)) {
+      $ni++
+      $ntTag = "network.targets[$ni]"
+      Assert-That (-not [string]::IsNullOrWhiteSpace("$($nt.target)")) "$ntTag · target 非空"
+      $lossOk = (Has-Prop $nt "loss_pct") -and (Test-Numeric $nt.loss_pct) -and ($nt.loss_pct -ge 0) -and ($nt.loss_pct -le 100)
+      Assert-That $lossOk "$ntTag · loss_pct 为 0-100 数值"
+      $latOk = (Has-Prop $nt "latency_p50_ms") -and (($null -eq $nt.latency_p50_ms) -or ((Test-Numeric $nt.latency_p50_ms) -and ($nt.latency_p50_ms -ge 0)))
+      Assert-That $latOk "$ntTag · latency_p50_ms 为非负数值或 null"
+      $dnsOk = (Has-Prop $nt "dns_ms") -and (($null -eq $nt.dns_ms) -or ((Test-Numeric $nt.dns_ms) -and ($nt.dns_ms -ge 0)))
+      Assert-That $dnsOk "$ntTag · dns_ms 为非负数值或 null"
+    }
+  }
+}
+
 # ---- 汇总 ----
 $total = $script:pass + $script:fail
 Write-Host ""

@@ -14,3 +14,9 @@
 
 ## 判定
 - 配置漂移未登记的改动 = P2（补登记）；代理指向无监听端口 = P1（功能性故障，与 stage-04 口径一致）；穿透/共享工具 allowGlobal 类安全位打开 = P1。
+
+## §8 链路基线（有副作用，须先征得同意）
+- **副作用声明**：网络探测产生流量并占用带宽（同 stage-14 口径），须先向用户说明并取得同意；未同意仅标 `未检查`。
+- **采样写入**：固定 3 个代表目标 × 3 次采样测 p50 延迟（`latency_p50_ms`）、丢包率（`loss_pct`）与 DNS 解析耗时（`dns_ms`），结果写入基线可选 `network` 节（`assets/baseline.schema.json` `1.2`），下轮同口径 diff。
+- **中立报告**：只报 `"变了多少"`（相对上轮差值），不替用户判定 `"哪条更好"`——多目标权衡交用户。
+- **命令**：`3` 次循环计 `[Net.Dns]::GetHostAddresses($h)` 耗时与 `Test-NetConnection -ComputerName $h -Port 443`，排序取中位数 `[1]` 写入 `baseline.network.targets`。
