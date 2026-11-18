@@ -21,7 +21,7 @@
   Start-Job 15s 进程级超时；多远端只核验上游远端并标注其余；本表只评 git 同步，
   资产备份归阶段 11；符号链接/挂载别名等路径同一性未穷举（按路径语义如实标注未知）。
   基线趋势（v1.9）：-Baseline 传一份完整基线 JSON（assets/baseline.schema.json 约束），
-  本脚本只读其中的 snapshots.doctor.repos 做"新出现/已消失/升级/降级"比较；
+  本脚本只读其中的 snapshots.doctor.repos 做"新出现/已消失/改善/恶化/持平"比较；
   基线不存在或没有 doctor 快照时，报告里显式写「无基线，本轮不判趋势」，
   绝不凭印象说变好变坏。-SaveBaseline 只补写 snapshots.doctor 一段，
   不代造六节基线（那是 bootstrap 的职责）。

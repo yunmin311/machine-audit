@@ -42,7 +42,7 @@ try {
   Assert (Test-Path -LiteralPath $bMdPath) "probe -Action env -WriteMarkdown 写出基线 MD"
 
   $bjEnv = Get-Content -LiteralPath $bJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-  Assert ($bjEnv.schema_version -eq "1.2" -and $bjEnv.meta.skill_version -eq "0.9.7" -and @($bjEnv.top_dirs).Count -eq 0) "env 输出 schema_version=1.2, skill_version=0.9.7, top_dirs=[]"
+  Assert ($bjEnv.schema_version -eq "1.2" -and $bjEnv.meta.skill_version -eq "1.0.0" -and @($bjEnv.top_dirs).Count -eq 0) "env 输出 schema_version=1.2, skill_version=1.0.0, top_dirs=[]"
   Assert (($null -ne $bjEnv.environment.os) -and ($null -ne $bjEnv.environment.privilege) -and ($null -ne $bjEnv.environment.cloud_redirection) -and (@($bjEnv.drives).Count -gt 0)) "env 输出含 os/privilege/cloud_redirection/drives 全部约定字段"
 
   & $hostExe -NoProfile -ExecutionPolicy Bypass -File $checker -Path $bJsonPath | Out-Null

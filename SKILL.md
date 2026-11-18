@@ -9,9 +9,9 @@ description: >-
   at runtime instead of assuming machine type; diagnosis is read-only and mutations
   require an approved plan batch with before/after verification.
 metadata:
-  version: "0.9.7"
+  version: "1.0.0"
   category: "system-health"
-  platforms: "windows (v1 roadmap: macOS/Linux)"
+  platforms: "windows (v2 roadmap: macOS/Linux)"
   scope: "diagnose-plan-execute-gated"
   languages: "zh,en"
 ---

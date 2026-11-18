@@ -74,7 +74,7 @@ param(
   [switch]$QuarantineMode
 )
 
-$SKILL_VERSION = "0.9.7"
+$SKILL_VERSION = "1.0.0"
 $SCHEMA_VERSION = "1.2"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $utf8Bom = New-Object System.Text.UTF8Encoding($true)

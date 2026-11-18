@@ -2,6 +2,14 @@
 
 > 倒序排列：最新在最上。`0.6.0` 与 `0.6.4` 两个版本号跳过未发布（改动并入相邻条目）。
 
+## 1.0.0 — 2026-11-18（Windows 生产正式版 · E2E 全链路与离线盲测 8 场景全通过 · README 徽章定版）
+
+完成 `v0.9.0 → v0.9.7` 全阶段重构与边界加固后的首个 Windows 生产正式版本（`19` 审计阶段、`62` 领域包、`18` 条声明式规则、`Schema v1.2`、`147` 条回归断言，GitHub Actions `windows-latest` 全绿）：
+
+- **全链路验收通过**：外部隔离沙盒补齐 `E2E-1 ~ E2E-7`（两轮连续治理闭环 + Git `新出现/已消失/改善/恶化` 四态 diff、真实 `fsutil` 稀疏文件 10MB 实占 0B 估算与剪枝、`docs` 行数/年龄段触发、`dupes` 多副本与 `-TopDupesCount` 截断、`baseline-check` 自定义阈值与 `network` 校验、镜像双写 SHA256 一致/篡改告警、147/147 回归全绿）及离线 `8` 场景盲测全通（`0` 越权、`0` 假成功）。
+- **术语与文档统一**：修正 `scripts/project-doctor.ps1` 第 24 行注释术语（`"新出现/已消失/升级/降级"` 对齐为脚本与 `stage-13-report.md` 实际输出的 `"新出现/已消失/改善/恶化/持平"`）；更新 `README.md` 为居中大标题 + Shields.io `flat-square` 徽章栏与实时 CI 状态徽章。
+- **v1.0.0 诚实边界与后续路线图**：`v1.0.0` 为 Windows（PowerShell 5.1+）生产正式版；`invoke-plan.ps1` / `rollback.ps1` 执行器自动化、L2 预览生成器与 14 天隔离区自动宽限期管理当前仍按 `references/execution-safety.md` 人工批门与 `operations.jsonl` 规程执行（顺延至 `v1.1`），macOS / Linux 命令投影与一机多系统治理规范列入 `v2.0` 路线图。
+
 ## 0.9.7 — 2026-11-18（GitHub Actions `windows-latest` 实测修复：Windows 8.3 短路径规范化）
 
 依据首次在 GitHub Actions `windows-latest`（`%TEMP%` 含 `RUNNER~1` 8.3 短路径名）跑通的云端 CI 日志定位并根治长短路径混用偏差：
