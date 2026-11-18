@@ -6,14 +6,35 @@
   </picture>
 </p>
 
-# machine-audit
+<h1 align="center">machine-audit</h1>
 
-> **面向 AI 编码代理的可审计整机健康审查与治理循环技能包（Agent Skills 规范）**
-> **Auditable Whole-Machine Health Audit & Governance Loop Skill for AI Coding Agents (Agent Skills Spec)**
+<p align="center">
+  <b>Audit before you act.</b> Auditable Whole-Machine Health Audit &amp; Governance Loop Skill for AI Coding Agents (Agent Skills Spec)<br>
+  <b>先审计，再行动。</b>面向 AI 编码代理的可审计整机健康审查与治理循环技能包（Agent Skills 规范）
+</p>
 
-`Version: v0.9.7` · `Baseline Schema: v1.2` · `License: MIT` · `Platform: Windows 10/11 (PowerShell 5.1+)` · `Stages: 19 (00–18)` · `Domain Packs: 62` · `Assertions: 147 (47 + 33 + 67)`
+<p align="center">
+  <a href="CHANGELOG.md"><img alt="Version: v0.9.7" src="https://img.shields.io/badge/Version-v0.9.7-059669?style=flat-square&labelColor=0F172A"></a>
+  <a href="assets/baseline.schema.json"><img alt="Baseline Schema: v1.2" src="https://img.shields.io/badge/Baseline%20Schema-v1.2-334155?style=flat-square&labelColor=0F172A"></a>
+  <a href="https://github.com/yunmin311/machine-audit/actions/workflows/ci.yml"><img alt="CI: PowerShell 5.1" src="https://img.shields.io/github/actions/workflow/status/yunmin311/machine-audit/ci.yml?branch=main&style=flat-square&labelColor=0F172A&label=CI"></a>
+  <a href="#6-compatibility-tests--known-limitations"><img alt="Assertions: 147 (47 + 33 + 67)" src="https://img.shields.io/badge/Assertions-147%20(47%2B33%2B67)-059669?style=flat-square&labelColor=0F172A"></a>
+  <a href="#3-the-19-audit-stages-0018--single-authoritative-stage-table"><img alt="Stages: 19 (00–18)" src="https://img.shields.io/badge/Stages-19%20(00--18)-334155?style=flat-square&labelColor=0F172A"></a>
+  <a href="references/domain-packs.md"><img alt="Domain Packs: 62" src="https://img.shields.io/badge/Domain%20Packs-62-334155?style=flat-square&labelColor=0F172A"></a>
+  <a href="#4-installation--usage"><img alt="Platform: Windows 10/11 (PowerShell 5.1+)" src="https://img.shields.io/badge/Platform-Windows%2010%2F11%20%C2%B7%20PS%205.1%2B-334155?style=flat-square&labelColor=0F172A"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-334155?style=flat-square&labelColor=0F172A"></a>
+</p>
 
-[中文文档](#中文文档) · [English Documentation](#english-documentation) · [Security SOP](references/execution-safety.md) · [Changelog](CHANGELOG.md)
+<p align="center">
+  <a href="#中文文档"><b>中文文档</b></a>
+  &nbsp;·&nbsp;
+  <a href="#english-documentation"><b>English Documentation</b></a>
+  &nbsp;·&nbsp;
+  <a href="#5-execution-safety--honest-status">Safety Contract</a>
+  &nbsp;·&nbsp;
+  <a href="references/execution-safety.md">Security SOP</a>
+  &nbsp;·&nbsp;
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
 ---
 
