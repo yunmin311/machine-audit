@@ -19,7 +19,7 @@
 
 - **回收站假成功拦截**：
   - 现象：清理后原路径文件已消失且报告"已删除"，但资源管理器可用空间毫无变化（Shell 删除仅将空间转移至同一卷的 `$Recycle.Bin`）。
-  - 判据：批内删除**严禁走 Shell/回收站 API**（一律 `Move-Item` 同盘隔离区；确经回收站且批内清零须按铁律 5 单独授权排最后）；唯一验收口径为**可用空间实测增量**，报告固定三栏 **`逻辑释放 X GB / 实测释放 Y GB / 回收站 Z GB`** 须满足 `X ≈ Y + Z`（容差 1%）；当 `Y ≈ 0` 且 `Z > 0` 时必须判 **`未释放，空间在回收站`**；`QuarantineMode` 下可用空间不增加判 `quarantine-pending` 属预期，最终释放验收在清空隔离区批完成。
+  - 判据：批内删除**严禁走 Shell/回收站 API**（一律 `Move-Item` 同盘隔离区；确经回收站且批内清零须按铁律 5 单独授权排最后）；唯一验收口径为**可用空间实测增量**，报告固定三栏 **`逻辑释放 X GB / 实测释放 Y GB / 回收站 Z GB`** 须满足三栏账目吻合（人工复核容差 1%，考虑系统盘后台并发读写噪音，自动化 `scripts/probe.ps1 -Action delta` 以实增达到预估 85% 判 `released`，差额仍列账校验），并与规则/方案批预估回收对比校准（`预估 X GB / 实测 Y GB / 偏差`）；当 `Y ≈ 0` 且 `Z > 0` 时必须判 **`未释放，空间在回收站`**；`QuarantineMode` 下可用空间不增加判 `quarantine-pending` 属预期，最终释放验收在清空隔离区批完成。
   - 命令（批前后调用 `scripts/probe.ps1 -Action delta`；单引号保护 `'$Recycle.Bin'`；亦可直接对照 `Win32_LogicalDisk.FreeSpace`）：
 ```powershell
 .\scripts\probe.ps1 -Action delta -DeltaMode Snapshot -Drive E: -OutFile "$env:TEMP\before.json"

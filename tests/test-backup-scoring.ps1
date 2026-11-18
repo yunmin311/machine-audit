@@ -311,11 +311,45 @@ $rowCC = Import-Csv $csvCC.FullName | Where-Object Name -eq "cc-case-collision"
 Assert ($rowCC.Grade -eq "C关注") "大小写并用例 → C关注·分歧（实际 $($rowCC.Grade)——若为 A 说明 -ceq 被回退）"
 Assert ($rowCC.BackupGap -match "领先 1") "大小写并用例 缺口=领先 1（实际 '$($rowCC.BackupGap)'）"
 
+# ---- ReparsePoint 跳过用例：顶层目录与非 git 子目录里的 junction 均不得重复计入 ----
+$rpJuncs = @()
+$rpRoot = Join-Path $WorkRoot "rp-root"
+$rpTarget = Join-Path $WorkRoot "rp-real-src"
+$rpNg = Join-Path $rpRoot "ng-with-link"
+New-Item -ItemType Directory -Path $rpRoot, $rpTarget, $rpNg -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $rpTarget "r1.txt"), "1")
+[IO.File]::WriteAllText((Join-Path $rpTarget "r2.txt"), "2")
+[IO.File]::WriteAllText((Join-Path $rpNg "solo.txt"), "0")
+$rpTopLink = Join-Path $rpRoot "rp-top-link"
+$rpNestedLink = Join-Path $rpNg "nested-link"
+$jOk1 = $false; $jOk2 = $false
+try {
+  cmd /c mklink /J "$rpTopLink" "$rpTarget" >$null 2>$null
+  if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $rpTopLink)) { $jOk1 = $true; $rpJuncs += $rpTopLink }
+  cmd /c mklink /J "$rpNestedLink" "$rpTarget" >$null 2>$null
+  if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $rpNestedLink)) { $jOk2 = $true; $rpJuncs += $rpNestedLink }
+} catch { }
+if ($jOk1 -and $jOk2) {
+  & $DoctorPath -Roots $rpRoot -OutDir $outDir | Out-Null
+  $csvRP = Get-ChildItem $outDir -Filter *.csv | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  $rowsRP = @(Import-Csv $csvRP.FullName)
+  $hitTop = @($rowsRP | Where-Object Name -eq "rp-top-link")
+  $rowNg = $rowsRP | Where-Object Name -eq "ng-with-link" | Select-Object -First 1
+  Assert ($hitTop.Count -eq 0) "ReparsePoint 跳过: 顶层 junction 目录不被计为项目"
+  Assert ($null -ne $rowNg -and [int]$rowNg.Dirty -eq 1) "ReparsePoint 跳过: 非 git 目录内嵌 junction 不被递归双计文件（Dirty=$($rowNg.Dirty)）"
+} else {
+  Assert $true "ReparsePoint 跳过(顶层) 非 NTFS/受限环境跳过"
+  Assert $true "ReparsePoint 跳过(嵌套) 非 NTFS/受限环境跳过"
+}
+
 # 自清理（自身文件政策：fixture/产物不残留）
 # v0.8 修正：本条原先在脚本最末行，中途任何异常都到不了——实测在 %TEMP% 留下 5 项残留
 # （ma-final-check / ma-final-fixtures / ma-verify-root / 两个 .log）。清理必须进 finally，
 # 并且清理本身要被断言，否则"以为清了"和"真清了"分不出来。
 } finally {
+  foreach ($jl in @($rpJuncs)) {
+    if ($jl -and (Test-Path -LiteralPath $jl)) { cmd /c rmdir "$jl" 2>$null }
+  }
   Remove-Item -LiteralPath $WorkRoot -Recurse -Force -EA SilentlyContinue
   if (Test-Path -LiteralPath $WorkRoot) {
     $script:pass = $false

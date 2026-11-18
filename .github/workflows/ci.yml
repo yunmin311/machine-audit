@@ -1,0 +1,34 @@
+name: CI · PowerShell 5.1 Verification
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  ps51-tests:
+    name: Windows PowerShell 5.1 Regression Suite
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run backup scoring counterexample tests
+        shell: powershell
+        run: |
+          & .\tests\test-backup-scoring.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run baseline schema mechanical gate tests
+        shell: powershell
+        run: |
+          & .\tests\test-baseline-schema.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run unified probe helper & torture tests
+        shell: powershell
+        run: |
+          & .\tests\test-agent-helpers.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

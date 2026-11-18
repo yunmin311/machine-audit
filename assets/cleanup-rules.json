@@ -1,0 +1,349 @@
+{
+  "schema_version": "1.0",
+  "description": "machine-audit 声明式清理候选规则库（Kernel 规则数据；绝不包含本机绝对路径，每条强制声明 does_not_touch 排除边界；只读匹配用，删除一律走同盘隔离区或原生 GC 命令）。",
+  "rules": [
+    {
+      "id": "pkg-npm-cache",
+      "category": "package-manager",
+      "title": "npm 本地包缓存",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "npm cache clean --force",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["npm"],
+        "paths_env": ["%LOCALAPPDATA%\\npm-cache", "%APPDATA%\\npm-cache"]
+      },
+      "does_not_touch": [
+        "~/.npmrc 中的 authToken 与 registry 配置",
+        "%APPDATA%\\npm 下的全局已安装 CLI 工具",
+        "各项目目录内的 package-lock.json 与 node_modules"
+      ],
+      "reason": "仅缓存已下载的 tarball 归档，可随时从源重新拉取。"
+    },
+    {
+      "id": "pkg-pnpm-store",
+      "category": "package-manager",
+      "title": "pnpm 内容寻址仓库孤儿包",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "pnpm store prune",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["pnpm"],
+        "paths_env": ["%LOCALAPPDATA%\\pnpm\\store", "%LOCALAPPDATA%\\pnpm-store"]
+      },
+      "does_not_touch": [
+        "项目工作区内的 node_modules 硬链接目标与 pnpm-lock.yaml",
+        "%LOCALAPPDATA%\\pnpm 下的全局可执行 CLI shim",
+        "严禁直接 RM 整座 store 目录（会破坏在役项目硬链接）"
+      ],
+      "reason": "使用 pnpm 原生 prune 仅清理未被任何项目引用的孤儿 store 包。"
+    },
+    {
+      "id": "pkg-pip-cache",
+      "category": "package-manager",
+      "title": "Python pip 下载缓存",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "pip cache purge",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["pip", "pip3"],
+        "paths_env": ["%LOCALAPPDATA%\\pip\\Cache"]
+      },
+      "does_not_touch": [
+        "所有项目 .venv、virtualenv 与 conda envs 运行环境",
+        "pip.ini / pip.conf 源配置与全局 site-packages"
+      ],
+      "reason": "仅清除 wheel/sdist 安装缓存，不影响已装虚拟环境。"
+    },
+    {
+      "id": "pkg-uv-cache",
+      "category": "package-manager",
+      "title": "uv 包管理器构建与下载缓存",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "uv cache clean",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["uv"],
+        "paths_env": ["%LOCALAPPDATA%\\uv\\cache"]
+      },
+      "does_not_touch": [
+        "%APPDATA%\\uv\\python 下托管的 Python 解释器",
+        "%APPDATA%\\uv\\tools 全局工具环境与各项目 .venv / uv.lock"
+      ],
+      "reason": "仅清 uv 缓存池，不影响已装 Python 版本与工具隔离环境。"
+    },
+    {
+      "id": "pkg-cargo-cache",
+      "category": "package-manager",
+      "title": "Rust Cargo 注册表压缩包与解包源码缓存",
+      "risk": "medium",
+      "execution_mode": "native-command",
+      "preferred_command": "cargo cache -a   # 或对老旧项目用 cargo sweep --time 30 --dry-run",
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": ["cargo"],
+        "paths_env": ["%USERPROFILE%\\.cargo\\registry\\cache", "%USERPROFILE%\\.cargo\\registry\\src"]
+      },
+      "does_not_touch": [
+        "%USERPROFILE%\\.cargo\\bin 已编译全局工具链二进制",
+        "%USERPROFILE%\\.cargo\\credentials.toml 凭据与 config.toml",
+        "项目当前未过期的 target 构建目录（离线编译需求需先确认）"
+      ],
+      "reason": "registry cache/src 体量可观，无离线构建需求时可重建，但首次再编译会重新联网拉取。"
+    },
+    {
+      "id": "pkg-nuget-http-cache",
+      "category": "package-manager",
+      "title": ".NET NuGet HTTP 请求缓存",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "dotnet nuget locals http-cache --clear",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["dotnet"],
+        "paths_env": ["%LOCALAPPDATA%\\NuGet\\v3-cache"]
+      },
+      "does_not_touch": [
+        "%USERPROFILE%\\.nuget\\packages（全球包还原缓存需另外单独确认）",
+        "NuGet.Config 私有包源地址与凭据"
+      ],
+      "reason": "v3-cache 仅存 HTTP 元数据响应，清理几乎无副作用。"
+    },
+    {
+      "id": "pkg-gradle-cache",
+      "category": "package-manager",
+      "title": "Gradle 全局依赖缓存与守护日志",
+      "risk": "medium",
+      "execution_mode": "quarantine",
+      "preferred_command": null,
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": ["gradle"],
+        "paths_env": ["%USERPROFILE%\\.gradle\\caches", "%USERPROFILE%\\.gradle\\daemon"]
+      },
+      "does_not_touch": [
+        "%USERPROFILE%\\.gradle\\gradle.properties 与 init.d（常含仓库认证与代理配置）",
+        "Android keystore 签名证书与项目源代码"
+      ],
+      "reason": "移动端/JVM 长期积累可达数十 GB；移入隔离区确认构建正常后再释放空间。"
+    },
+    {
+      "id": "pkg-yarn-bun-cache",
+      "category": "package-manager",
+      "title": "Yarn / Bun 全局包下载缓存",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "yarn cache clean   # 或 Bun 缓存使用 bun pm cache rm",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["yarn", "bun"],
+        "paths_env": ["%LOCALAPPDATA%\\Yarn\\Cache", "%USERPROFILE%\\.bun\\install\\cache"]
+      },
+      "does_not_touch": [
+        "各项目工作区内的 node_modules、yarn.lock、bun.lock / bun.lockb",
+        ".yarnrc.yml / bunfig.toml 与 %USERPROFILE%\\.bun\\bin 全局 CLI"
+      ],
+      "reason": "仅缓存已拉取的 JS 包压缩包（按命中子路径区分 Yarn 或 Bun 后执行对应原生清理）。"
+    },
+    {
+      "id": "pkg-go-build-cache",
+      "category": "package-manager",
+      "title": "Go 编译器构建缓存（go-build）",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "go clean -cache",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["go"],
+        "paths_env": ["%LOCALAPPDATA%\\go-build"]
+      },
+      "does_not_touch": [
+        "%USERPROFILE%\\go\\pkg\\mod 依赖模块缓存（离线编译场景勿 run go clean -modcache）",
+        "%USERPROFILE%\\go\\bin 已安装工具二进制与 Go 源码仓库"
+      ],
+      "reason": "仅清除增量编译中间产物缓存，下次构建按需再生。"
+    },
+    {
+      "id": "pkg-scoop-cache",
+      "category": "package-manager",
+      "title": "Scoop 包管理器安装包下载缓存",
+      "risk": "low",
+      "execution_mode": "native-command",
+      "preferred_command": "scoop cache rm *",
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": ["scoop"],
+        "paths_env": ["%USERPROFILE%\\scoop\\cache"]
+      },
+      "does_not_touch": [
+        "%USERPROFILE%\\scoop\\apps 已安装应用本体",
+        "%USERPROFILE%\\scoop\\persist 持久化应用配置与数据目录",
+        "%USERPROFILE%\\scoop\\shims 命令入口垫片"
+      ],
+      "reason": "安装包在应用就绪后仅作归档留存，使用 scoop 原生命令清缓存零副作用。"
+    },
+    {
+      "id": "dev-docker-wsl",
+      "category": "dev-runtime",
+      "title": "Docker Desktop 容器镜像与停止的构建缓存",
+      "risk": "medium",
+      "execution_mode": "native-command",
+      "preferred_command": "docker system df && docker builder prune",
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": ["docker"],
+        "paths_env": ["%LOCALAPPDATA%\\Docker\\wsl"]
+      },
+      "does_not_touch": [
+        "严禁在文件系统直接删除 docker_data.vhdx / ext4.vhdx（必毁环境且存在稀疏分配与逻辑大小差异）",
+        "宿主机 bind-mount 持久化数据目录与 docker-compose.yml",
+        "正在运行的数据库/服务具名数据卷（named volumes）"
+      ],
+      "reason": "需通过 Docker CLI 内建命令核实逻辑与稀疏占盘后只剪除悬空镜像与构建缓存。"
+    },
+    {
+      "id": "browser-chromium-cache",
+      "category": "browser",
+      "title": "Chrome / Edge 默认配置网页与代码缓存",
+      "risk": "low",
+      "execution_mode": "quarantine",
+      "preferred_command": null,
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": [],
+        "paths_env": [
+          "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache",
+          "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Code Cache",
+          "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache",
+          "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Code Cache"
+        ]
+      },
+      "does_not_touch": [
+        "Bookmarks、History、Login Data、Cookies、Preferences、Web Data、Local Storage 与 Extensions",
+        "多账号 Profile 下的同步与登录状态目录"
+      ],
+      "reason": "仅限静态 HTTP/JS 编译缓存子目录；须避开浏览器锁文件冲突并移入隔离区。"
+    },
+    {
+      "id": "sys-user-temp",
+      "category": "system-temp",
+      "title": "Windows 用户与系统临时目录陈旧临时文件",
+      "risk": "low",
+      "execution_mode": "quarantine",
+      "preferred_command": null,
+      "needs_owner_confirm": false,
+      "probe": {
+        "commands": [],
+        "paths_env": ["%TEMP%", "%WINDIR%\\Temp"]
+      },
+      "does_not_touch": [
+        "近 24 小时内修改或当前被进程占用的活动锁文件与安装器解压目录",
+        "用户文档、桌面、下载目录中的个人文件"
+      ],
+      "reason": "仅清理超龄无主临时文件与崩溃残留，操作前仍按批走隔离区留退路。"
+    },
+    {
+      "id": "sys-crash-dumps",
+      "category": "system-temp",
+      "title": "Windows 应用与内核崩溃转储（CrashDumps / Minidump）",
+      "risk": "medium",
+      "execution_mode": "quarantine",
+      "preferred_command": null,
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": [],
+        "paths_env": ["%LOCALAPPDATA%\\CrashDumps", "%WINDIR%\\Minidump"]
+      },
+      "does_not_touch": [
+        "用户正在排查蓝屏/闪退根因且尚未提取堆栈分析的近期 .dmp 文件",
+        "用户个人文档、项目源码与事件日志本身"
+      ],
+      "reason": "单个应用完整转储可达数 GB；若无在查故障，移入隔离区观察后可释放空间。"
+    },
+    {
+      "id": "sys-wu-download",
+      "category": "system-temp",
+      "title": "Windows Update 已下载安装包暂存区",
+      "risk": "medium",
+      "execution_mode": "quarantine",
+      "preferred_command": null,
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": [],
+        "paths_env": ["%WINDIR%\\SoftwareDistribution\\Download"]
+      },
+      "does_not_touch": [
+        "%WINDIR%\\SoftwareDistribution\\DataStore 更新安装历史数据库",
+        "%WINDIR%\\WinSxS 系统组件存储（必须用 DISM 原生清理）",
+        "wuauserv 处于 Pending Reboot 待完成安装状态的批次"
+      ],
+      "reason": "需要管理员权限且须先确认系统不处于等待重启完成更新状态。"
+    },
+    {
+      "id": "sys-recycle-bin",
+      "category": "recycle-bin",
+      "title": "各卷回收站暂存释放核对",
+      "risk": "high",
+      "execution_mode": "empty-recycle-bin",
+      "preferred_command": "Clear-RecycleBin -DriveLetter <盘符>   # 不可回滚，按铁律 5 单独授权排最后",
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": [],
+        "paths_env": ["%SystemDrive%\\$Recycle.Bin"]
+      },
+      "does_not_touch": [
+        "未经用户逐盘核对回收站内无误删重要文件前严禁清空",
+        "批内正常两段式清理严禁经过回收站（一律 Move-Item 进隔离区）"
+      ],
+      "reason": "清空回收站属不可回滚动作；常是「逻辑已删但可用空间未涨」的物理占用所在（本规则仅默认探测系统盘，数据盘如 D:/E: 回收站须按盘加测 -Action delta -Drive <盘符>:）。"
+    },
+    {
+      "id": "agent-session-logs",
+      "category": "ai-agent",
+      "title": "AI 编码 Agent 调试日志与会话临时缓冲",
+      "risk": "medium",
+      "execution_mode": "quarantine",
+      "preferred_command": "scripts/probe.ps1 -Action docs   # 先盘点再按 Stage 18 先蒸馏后退役",
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": [],
+        "paths_env": [
+          "%USERPROFILE%\\.claude\\debug",
+          "%USERPROFILE%\\.codex\\log",
+          "%USERPROFILE%\\.gemini\\tmp"
+        ]
+      },
+      "does_not_touch": [
+        "任何 auth.json、.credentials*、oauth_creds、settings.json、.env 凭据与配置",
+        "MEMORY.md 与已沉淀结论层（L3 永久知识绝不删除）",
+        "未完成蒸馏的近期 L1 日志与正在进行中的会话目录"
+      ],
+      "reason": "调试 trace 与临时对话缓冲膨胀迅速，但必须恪守 Stage 18「先蒸馏后归档/隔离」且避开凭据文件。"
+    },
+    {
+      "id": "media-editor-cache",
+      "category": "media-cache",
+      "title": "视频与创意软件渲染及媒体缓存",
+      "risk": "medium",
+      "execution_mode": "quarantine",
+      "preferred_command": null,
+      "needs_owner_confirm": true,
+      "probe": {
+        "commands": [],
+        "paths_env": [
+          "%APPDATA%\\Adobe\\Common\\Media Cache Files",
+          "%LOCALAPPDATA%\\JianyingPro\\User Data\\Cache"
+        ]
+      },
+      "does_not_touch": [
+        "相机原片、工程主文件（.prproj / .drp / .lrcat）、导出成品目录与自定义 LUT",
+        "Lightroom Catalog 主库及 catalog backups"
+      ],
+      "reason": "影视剪辑媒体缓存常达 50–200GB，需严格与用户工程/素材根目录物理隔离后方能移动清理。"
+    }
+  ]
+}

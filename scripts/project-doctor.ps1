@@ -40,7 +40,7 @@ param(
 )
 $ErrorActionPreference = "SilentlyContinue"
 if (-not $Roots -or $Roots.Count -eq 0) { $Roots = @((Get-Location).Path) }
-if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
+if (-not (Test-Path -LiteralPath $OutDir)) { [IO.Directory]::CreateDirectory($OutDir) | Out-Null }
 $stamp = Get-Date -Format "yyyy-MM-dd"
 $runId = Get-Date -Format "yyyyMMdd-HHmmssfff"
 $rows = @()
@@ -48,11 +48,11 @@ $rows = @()
 foreach ($root in $Roots) {
   if (-not (Test-Path -LiteralPath $root)) { Write-Warning "根目录不存在: $root"; continue }
   $rootLeaf = Split-Path $root -Leaf
-  Get-ChildItem -LiteralPath $root -Directory -Force | ForEach-Object {
+  Get-ChildItem -LiteralPath $root -Directory -Force | Where-Object { -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } | ForEach-Object {
     $dir = $_.FullName; $name = $_.Name
     if ($name -like ".*" -or $name -like "_*" -or $name -eq (Split-Path $root -Leaf)) { $kind = "meta" } else { $kind = "project" }
 
-    if (Test-Path (Join-Path $dir ".git")) {
+    if (Test-Path -LiteralPath (Join-Path $dir ".git")) {
       # ---- 采集（关键 git 调用检查退出码——失败保留为失败，不当干净）----
       $remotes     = @(git -C $dir remote 2>$null | Where-Object { $_ })
       $remoteLine  = git -C $dir remote -v 2>$null | Select-Object -First 1
@@ -69,7 +69,7 @@ foreach ($root in $Roots) {
       $lastStr     = git -C $dir log -1 --format=%ci 2>$null
       $branch      = git -C $dir branch --show-current 2>$null
       $localHead   = git -C $dir rev-parse HEAD 2>$null
-      $readme      = Test-Path (Join-Path $dir "README.md")
+      $readme      = Test-Path -LiteralPath (Join-Path $dir "README.md")
 
       # ---- 隐私检查：逐邮箱判断 + 已跟踪敏感文件 ----
       $emailList = git -C $dir log -100 --format=%ae 2>$null | Sort-Object -Unique
@@ -266,7 +266,19 @@ foreach ($root in $Roots) {
         LastCommit = if ($last) { $last.ToString("yyyy-MM-dd") } else { "-" }
       }
     } else {
-      $files = [int]((Get-ChildItem -LiteralPath $dir -Recurse -File -Force -EA SilentlyContinue | Measure-Object).Count)
+      $files = 0
+      $stk = New-Object System.Collections.Stack
+      $rDi = New-Object System.IO.DirectoryInfo $dir
+      if (-not ($rDi.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $stk.Push($rDi) }
+      while ($stk.Count -gt 0) {
+        $curDi = $stk.Pop()
+        try {
+          foreach ($entry in $curDi.EnumerateFileSystemInfos('*', [IO.SearchOption]::TopDirectoryOnly)) {
+            if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+            if ($entry -is [IO.DirectoryInfo]) { $stk.Push($entry) } else { $files++ }
+          }
+        } catch { }
+      }
       $rows += [pscustomobject]@{
         Root=$rootLeaf; Name=$name; Kind=$kind; Grade="X非git"; Score=0
         Backup=0; Active=0; Clean=0; Doc=0
@@ -415,8 +427,8 @@ foreach ($r in ($gitRows | Where-Object { $_.Grade -in "C关注","D风险" })) {
 }
 $md += ""
 $mdFile = Join-Path $OutDir "项目登记表-$stamp-$runId.md"
-$md | Out-File -FilePath $mdFile -Encoding UTF8
-$rows | Export-Csv -Path (Join-Path $OutDir "registry-$stamp-$runId.csv") -NoTypeInformation -Encoding UTF8
+$md | Out-File -LiteralPath $mdFile -Encoding UTF8
+$rows | Export-Csv -LiteralPath (Join-Path $OutDir "registry-$stamp-$runId.csv") -NoTypeInformation -Encoding UTF8
 
 $gapCount = ($gitRows | Where-Object { $_.BackupGap -and $_.BackupGap -ne "-" } | Measure-Object).Count
 

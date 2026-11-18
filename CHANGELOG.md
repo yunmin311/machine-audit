@@ -2,6 +2,59 @@
 
 > 倒序排列：最新在最上。`0.6.0` 与 `0.6.4` 两个版本号跳过未发布（改动并入相邻条目）。
 
+## 0.9.7 — 2026-11-18（GitHub Actions `windows-latest` 实测修复：Windows 8.3 短路径规范化）
+
+依据首次在 GitHub Actions `windows-latest`（`%TEMP%` 含 `RUNNER~1` 8.3 短路径名）跑通的云端 CI 日志定位并根治长短路径混用偏差：
+
+- **8.3 短路径与长路径统一规范化 (`scripts/probe.ps1`)**：新增 `Resolve-WinCanonicalPath`（小于 240 字符的非 `\\?\` 路径经 `[IO.Path]::GetFullPath` 统一展开 8.3 短路径并去尾斜杠）；接入 `Measure-DirSafe`、`Invoke-SpaceAction`（`-Roots`/`-TopDirs`/`-StreamOut`/`-Resume` 键以及子树对账 `$rootMeta`）与 `Invoke-DupesAction`，消除传入 `RUNNER~1` 等 8.3 短路径时出现的 `-Resume` 缓存静默未命中与子树对账漏汇总问题。
+- **测试夹具规范化与 8.3 回归 (`tests/test-agent-helpers.ps1`)**：初始化 `$WorkRoot` 后即规范化为完整长路径以兼容 `windows-latest` (`runneradmin`/`RUNNER~1`)，并新增 `Torture-9e`（实测传入 FSO 生成的 8.3 短路径执行 `space` 子树对账与 `-StreamOut/-Resume`）；全套断言增至 `47 + 33 + 67 = 147` 条。
+
+## 0.9.6 — 2026-11-18（压测问题修复：`-Roots` 缺失/离线路径强制标 `failed` · `-OutDir` 方括号建目录安全）
+
+针对黑盒边界压力测试 Case 7 暴露的路径口径不一致完成精准修复：
+
+- **缺失 `-Roots` 与 `-TopDirs` 口径对齐 (`scripts/probe.ps1`)**：修复 `Invoke-SpaceAction` 中当 `-Roots` 传入不存在或离线路径时只记 `offline` restriction 却将 `meta.scan_status` 保持为 `"ok"` 从而绕过 `baseline-check.ps1` 的问题；现同步置 `$overallScanStatus = "failed"`、写入失败条目进 `top_dirs`，并用 `Get-WinLongSafePath` + `[IO.DirectoryInfo]` 处理根目录直属文件读取异常（权限受限显式记入 `partial`/restrictions 而非静默吞错）。
+- **`-OutDir` 方括号目录创建保护 (`scripts/probe.ps1`)**：`env`/`space` 输出目录创建统一由 `New-Item -Path` 改用 `[IO.Directory]::CreateDirectory($OutDir)`，彻底消除 `[v1]` 等通配符路径创建异常。
+- **回归测试补强 (`tests/test-agent-helpers.ps1`)**：新增 `Torture-9d`（3 条断言），覆盖缺失 `-Roots` 输出 `scan_status=failed` 且被 `baseline-check.ps1` 拒绝（exit `1`）以及 `[v1]` `-OutDir` 创建；全套断言增至 `47 + 33 + 66 = 146` 条。
+
+## 0.9.5 — 2026-11-18（公开陷阱加固：通配符 `-LiteralPath` · `MAX_PATH` `\\?\` 兜底 · Torture 脏边界测试 · GitHub Actions CI）
+
+针对 Windows / NTFS / PowerShell 5.1 公开高频故障场景完成轻量加固，不引入重型虚拟机也不膨胀包体积（公开脚本维持 `3` 个）：
+
+- **通配符与括号路径防崩溃 (`scripts/project-doctor.ps1`)**：`-Roots` 与 `-OutDir` 中含 `[v1]`、`$` 或中文字符时，将 `Test-Path`、`Out-File`、`Export-Csv` 与目标报告校验全部切换为 `-LiteralPath`，创建输出目录改用 `[IO.Directory]::CreateDirectory($OutDir)`，消除 PowerShell 通配符误解析导致的路径找不到或导出失败。
+- **超长路径 `MAX_PATH > 260` `\\?\` 兜底 (`scripts/probe.ps1`)**：新增共享 `Get-WinLongSafePath` 辅助函数（对长度 `>= 240` 的盘符路径自动补 `\\?\` 前缀）；在 `Measure-DirSafe`、`Invoke-DupesAction` 的目录枚举以及 `Get-FilePartialSha256`、`Get-FileFullSha256` 的文件读取路径启用 `\\?\` 兜底，避免未启用系统长路径策略时的 `PathTooLongException`。
+- **第 9 节 Torture 脏边界测试集 (`tests/test-agent-helpers.ps1`)**：新增 `Torture-9a/9b/9c` 共 7 条断言——分别在无权限/无 OneDrive 环境下可控复现 `torture-[v1] $中文` 路径、`[IO.FileAttributes]::Offline` 云盘占位符零水合跳过与标记、`MAX_PATH > 260` 超长目录与跨深分支查重，并在 `finally` 中增加 `\\?\` 递归自清理。
+- **云端自动回归 (`/.github/workflows/ci.yml`)**：新增轻量 GitHub Actions `windows-latest` CI 工作流（并在 `release/public-allowlist.txt` 纳入 `.github/`），每次 push / PR 自动在真实 Windows PowerShell 环境跑通全部 `143` 条回归断言；公开 `scripts/*.ps1` 仍保持 `3` 个。
+- **基线门与测试通过**：全套测试升级至 `47 + 33 + 63 = 143` 条（`test-backup-scoring.ps1` `47` + `test-baseline-schema.ps1` `33` + `test-agent-helpers.ps1` `63`），全量通过且无临时目录残留。
+
+## 0.9.4 — 2026-11-18（真机与沙盒对抗实测修复：直属大文件 · 无损续扫 · 硬链接/云盘校准 · 跨环境守则）
+
+> 主线：依据真机全流程实跑与边缘沙盒对抗实验暴露出的具体缺陷逐一修补，确保口径诚实、边界自洽、跨 WSL2/Windows 顺手。
+
+- Fixed (`scripts/probe.ps1 -Action space`): 根目录直属文件现随子目录树一并纳入 `age_size_matrix` 与 `top_large_files`（不再只入 `volume_reconciliation` 造成根内大文件漏报）；`-StreamOut` 现每目录写入 `dir_matrix`、`dir_large_files`、`stream_filters` 与 `allocated_bytes`，`-Resume` 时无损合并分桶与大文件，且检测到传入更宽松过滤条件（如 `-MinSizeMB` 调低）时自动绕过陈旧流缓存重扫（记入 `stream_cache_bypassed_count`），杜绝静默空表。
+- Fixed (`scripts/probe.ps1 -Action rules|docs|dupes|env` / `assets/cleanup-rules.json`): `-Action rules` 多路径部分成功由全盘判 `failed` 改为 `partial` 并逐条输出 `path_details` 及基于稀疏/压缩检查的 `estimated_allocated_bytes`（优化 `dev-docker-wsl` 等 `.vhdx` 估算精度），补充 Yarn/Bun 双命令说明与数据盘回收站复核提示；`-Action docs` 跨重叠父子 `-Roots` 按全路径去重计数且跳过 `ReparsePoint`；`-Action dupes` 对含外部硬链接副本的组别自动输出 `recommended_keep_path` 并剔除单删不释盘的外链字节；`Get-FastScannerTools` 补充扫描运行中 `Everything`/`WizTree` 进程与注册表路径，并在 `drives[].note` 自动标示 Google Drive/WinFsp 等疑似云端虚拟共享盘防重复计容。
+- Fixed (`scripts/project-doctor.ps1` / `references/execution-safety.md` / `references/stage-02-disk.md` / `references/stage-07-security.md` / `references/stage-11-backup.md` / `SKILL.md`): `project-doctor.ps1` 枚举目录与统计非 Git 文件均显式跳过 `ReparsePoint`，消除符号链接目录双倍计入；对齐 `execution-safety.md` 系统盘并发噪声（85% 自动化达标与 1% 人工复核说明）；`stage-07`/`11` 补充 SMB Share ACL vs NTFS 交叉对比、GUID/陌生根证书溯源命令与跟踪敏感文件（`SensHits > 0`）优先轮换秘钥/`git rm --cached` 处置边界；`SKILL.md` 新增跨 WSL2 调用 `powershell.exe` 防卡死/转义参数守则。
+- Added (`docs/brand/*.svg` / `README.md` / `release/public-allowlist.txt`): 纳入优化版双主题矢量品牌标（顺时针透视渐深圆环 + 居中 `Δ` 核验棱镜）并在 `README.md` 顶部接入 `<picture>` 明暗自适应 Banner（设计脚本与提案草稿仅留私有仓，白名单仅发布纯文本 SVG）。
+- Tested (`tests/test-backup-scoring.ps1` / `tests/test-agent-helpers.ps1`): 新增 `ReparsePoint` 跳过、根目录直属文件入矩阵、无损流式续扫与宽条件重扫绕过、多路径部分失败 `path_details`、`docs` 重叠根去重及外部硬链接推荐保留等 **7 条**回归断言（全包总计 **136** 断言 = `47 + 33 + 56`，PS 5.1 全过）。
+
+## 0.9.3 — 2026-11-18（第 2 批：四级漏斗查重 · 结构化筛选 · 流式续扫 · 多场景规则扩展）
+
+> 主线：补齐面向跨用户多样机器环境的高价值只读模块——四级漏斗只读查重（含 NTFS 硬链接与云占位防护）、结构化候选筛选、`-StreamOut`/`-Resume` 断点续扫、MFT 快速工具探测，以及更多常见开发/Windows 规则。
+
+- Added (`scripts/probe.ps1 -Action dupes`): 新增第六动作 `-Action dupes` 实现四级漏斗只读查重：① 第 0 关跳过 0 字节、重解析点、`Offline`/`RecallOnDataAccess`/`RecallOnOpen` 云占位并应用 `-MinSizeMB`（默认 10MB）/ `-MinAgeDays` / `-IncludeExt` / `-ExcludeExt`；② 第 1 关按字节分组并调用 Win32 `GetFileInformationByHandle` 识别 NTFS `(VolumeSerial, FileIndex)` 硬链接，把同块硬链接单独归簇为 `hardlink_clusters`（`reclaimable_bytes=0`，绝不把 `pnpm store`/硬链接误判为重复）；③ 第 2 关仅读头 4KB + 尾 4KB 算局部 SHA256 淘汰伪碰撞；④ 第 3 关仅对极少碰撞组流式全文件 SHA256 确认并按 `allocated_bytes` 计真实可回收空间（默认 Top-50，含 `oldest_path`/`newest_path` 与重叠 `-Roots` 自动去重）。
+- Added (`scripts/probe.ps1 -Action space|env` / `assets/baseline.schema.json`): `-Action space` 新增结构化筛选参数（仅作用于 `top_large_files` 候选，绝不扭曲 `top_dirs` 与 `age_size_matrix` 总账）及 `-StreamOut <jsonl>` / `-Resume` 每目录实时落盘与断点续扫；`-Action env` 与 `space` 顺带只读探测 `es.exe`/WizTree 并存入可选 `snapshots.fast_scanners`（保持 `1.2` schema 兼容）。
+- Added (`assets/cleanup-rules.json` / `references/stage-02-disk.md` / `SKILL.md`): 声明式规则库由 14 条扩充至 **18 条**（新增 Yarn/Bun、Go `go-build`、Scoop 安装包缓存与 CrashDumps/Minidump，每条均带明确 `does_not_touch` 护栏）；`stage-02-disk.md` 与 `SKILL.md` 同步更新 `-Action dupes` 规程与开关。
+- Tested (`tests/test-agent-helpers.ps1`): 新增 11 条断言（结构化筛选保真度、`-StreamOut`/`-Resume` 续扫、`dupes` 第 0/2/3 关漏斗逐级收敛计数、`mklink /H` NTFS 硬链接识别归 0、重叠根去重与缺失根拒扫保护；全包总计 **129** 断言 = `45 + 33 + 51`，PS 5.1 全过）。
+
+## 0.9.2 — 2026-11-17（第 1 批：声明式清理规则库 · 单遍多维探测 · 预估/实际闭环）
+
+> 主线：从 MangoDisk / TreeSize / SpaceSniffer 吸取高性价比工程机制落地为第 1 批改进——规则数据化、每条强约束 `does_not_touch` 排除边界、单遍遍历顺带产出 3×3 年龄×体量矩阵与 Win32 实占 Top-50 / `<Unknown>` 对账、以及预估与实际回收偏差闭环。
+
+- Added (`assets/cleanup-rules.json` / `scripts/probe.ps1 -Action rules`): 新增 JSON 格式声明式清理候选规则库（14 条核心规则，PS 5.1 原生可解析、零硬编码本机路径），每条强制声明 `does_not_touch`（不碰什么）与 `execution_mode`（`native-command` / `quarantine` / `empty-recycle-bin`）；`probe.ps1` 新增第五动作 `-Action rules` 只读匹配本机路径、输出可回收估算与原生建议命令（如 `pnpm store prune`、`docker builder prune`）。
+- Changed (`scripts/probe.ps1 -Action space` / `assets/baseline.schema.json`): 在原有单遍 `Measure-DirSafe` 循环内（零额外磁盘 IO）顺带产出 `age_size_matrix`（`LastWriteTime` 3×3 矩阵）、`top_large_files`（≥100MB Top-50，调用 Win32 `GetCompressedFileSizeW` 读取实际占盘 `allocated_bytes` 并标出稀疏文件与云占位）、以及 SpaceSniffer `<Unknown>` 同源的 `volume_reconciliation`（卷已用 vs 已枚举 `unaccounted_bytes`）；传 `-Baseline` 时写入可选 `snapshots.space` 并在 `-WriteMarkdown` 渲染 `§SpaceBreakdown`，现有 1.2 必填字段零改动。
+- Updated (`references/stage-02-disk.md` / `stage-13-report.md` / `execution-safety.md` / `scripts/probe.ps1 -Action delta`): 阶段 02 接入规则库优先与多维排查；阶段 13 人话段新增百分比条形图（禁混入原始账目、禁跨采样比较）与「预估 vs 实际」闭环要求；`delta Compare` 输出 `estimated_vs_actual_diff_bytes` 与 `estimated_vs_actual_summary`。
+- Tested (`tests/test-agent-helpers.ps1`): 新增 15 条回归与结构门校验断言（规则库不变式与边界检查、`-Action rules` 合成规则只读匹配、3×3 矩阵分桶、Top-N 实占字节、子树对账、`§SpaceBreakdown` MD 渲染、`baseline-check.ps1` 兼容性及 `delta` 预估偏差；全包总计 **118** 断言 = `45 + 33 + 40`，PS 5.1 全过）。
+
 ## 0.9.1 — 2026-11-17（路由表措辞修正）
 
 - Fixed (`SKILL.md`): 路由表标题由「唯一阶段总表见 `README.md`」改为「完整阶段表在 `README.md`，供人阅读；agent 不必加载」。原措辞会让 agent 误以为必须加载这份 405 行的人类文档，与"默认路径窄"的设计相反。无功能变更、无字段变更。

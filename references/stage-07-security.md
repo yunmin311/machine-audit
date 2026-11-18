@@ -16,7 +16,7 @@
 - 三 profile：`Get-NetFirewallProfile | Select Name,Enabled`（任一关闭 = P0 候选）。
 - 入站 Allow 规则统计与死路径规则：`Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow | Get-NetFirewallApplicationFilter`——Program 非系统路径且 `Test-Path` 失败 = 死规则（残留信号，联动阶段 15）；**不用 netsh 文本解析**（locale 陷阱）。
 - 监听端口：`Get-NetTCPConnection -State Listen`，排除 loopback，每个对外端口溯源到进程与安装来源；新增端口与基线 diff。
-- 共享：`Get-SmbShare`（CIM，别用 `net share` 文本）；非默认共享逐个列名。
+- 共享：`Get-SmbShare`（CIM，别用 `net share` 文本）；非默认共享逐个列名，并对比 `Get-SmbShareAccess -Name <共享名>` 与 `Get-Acl <共享路径>`（如 `Users` 共享对 `Everyone: Full` 时核实底层 NTFS ACL 是否仍拦截非授权读取，禁止仅看共享层放宽误杀系统默认配置）。
 - 远程面：RDP（`fDenyTSConnections`）、UAC（EnableLUA）、SMB1。
 
 ### 7.3 持久化与劫持位面
@@ -24,7 +24,7 @@
 - hosts：非注释行 diff（语义：第三方标记行/异常 IP 映射 = 劫持候选）。
 - 浏览器策略键（HKLM/HKCU Policies）值枚举。
 - 系统代理：ProxyEnable/ProxyServer/AutoConfigURL（PAC 劫持检查）。
-- **根证书**：`Cert:\CurrentUser\Root` 与 LocalMachine 排除主流 CA 后逐个列出——第三方 CA（抓包工具/加速器/网吧类）= 高关注项，需溯源到安装它的软件。
+- **根证书**：`Cert:\CurrentUser\Root` 与 LocalMachine 排除主流 CA 后逐个列出——第三方 CA 或无可读软件名的 **GUID/自签证书** = 高关注项，须抓 `Subject,Issuer,NotBefore,NotAfter,Thumbprint,EnhancedKeyUsageList` 并将 `NotBefore` 与安装软件时间线/本地代理/开发工具逐一核对溯源（未定性前严禁盲删）。
 - 事件日志四查（见阶段 9 的 System/Application 部分，本阶段只取安全相关 provider）。
 
 ### 7.4 网络身份

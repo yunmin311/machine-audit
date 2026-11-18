@@ -255,6 +255,25 @@
               }
             }
           }
+        },
+        "space": {
+          "description": "probe -Action space 产出的 3x3 年龄x体量分布、Top-N 大文件（含实占 allocated_bytes）与卷未归账 <Unknown> 对账快照（可选）。",
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "generated_at": { "type": "string" },
+            "age_method": { "type": "string" },
+            "large_file_min_bytes": { "type": "integer", "minimum": 0 },
+            "age_size_matrix": { "type": "object" },
+            "top_large_files": { "type": "array" },
+            "volume_reconciliation": { "type": "array" },
+            "applied_filters": { "type": "object" }
+          }
+        },
+        "fast_scanners": {
+          "description": "本机探测到的快速 MFT/索引辅助工具（如 Everything es.exe / WizTree），供大数据盘交接提示（可选）。",
+          "type": "object",
+          "additionalProperties": true
         }
       }
     },

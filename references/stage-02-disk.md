@@ -9,9 +9,11 @@
 1. **卷级红线**：`Get-CimInstance Win32_LogicalDisk | Select DeviceID,Size,FreeSpace`（系统盘/数据盘 `<15% → P1`、`<10% → P0`，可在 overlay 调）。
 2. **根目录白名单（仅系统盘）**：`Get-ChildItem <sysroot>\ -Force -File` 记录白名单外文件并入阶段 15 核实主人。
 3. **一级分解与热点下钻**：对大目录禁止直接使用 `Get-ChildItem -Recurse` 或 MSYS `du`，改用下方安全枚举；`Measure-Object Length` 空集合须 `if ($null -eq $s){$s=0}` 兜底；热点下钻至软件/媒体/缓存终端。
-4. **缓存与临时**：扫 `%TEMP%`、`C:\Windows\Temp`、`SoftwareDistribution\Download`、各盘 `'$Recycle.Bin'`、浏览器与包管理器（从各自 `config` 读路径）；缓存合计 `>10GB → P2`、`>20GB → P1`。
-5. **基线 diff**：对比 `overlay.baseline_current`（须为 `baseline-*.json`）的增长/缩小 top5 与新增根目录；单目录月增 `>20GB` 且无解释 → P1。
-- **常见坑**：`Get-PhysicalDisk | Select FriendlyName,MediaType` 查出 HDD/SMR 时直接交接 WizTree；OneDrive 占位文件需区分逻辑体积与实际占用。
+4. **缓存与临时（规则化 + 原生 GC 优先）**：声明式规则见 `assets/cleanup-rules.json`（18 条通用规则，每条强制含 `probe` 探针、`preferred_command` 原生清理与 `does_not_touch` 排除边界）；先只读跑 `powershell -Command "& '.\scripts\probe.ps1' -Action rules"` 匹配常见用户路径缓存，合计 `>10GB → P2`、`>20GB → P1`。对迁至非系统盘的自定义存储（如 `pnpm store path`、`<数据盘>:\$Recycle.Bin`）须补充盘级探测，并查看规则输出的 `path_details`（区分部分子路径无权限 `partial` 与整体不可读 `failed`）及稀疏 `.vhdx` 实占 `estimated_allocated_bytes`，禁删未核查 `does_not_touch` 项。
+5. **多维分布、大文件筛选与断点流式（零额外 IO 单次顺采）**：`scripts/probe.ps1 -Action space` 将根目录直属文件与子目录树一体纳入统计，在同遍遍历中输出 **3×3 年龄（基于 `LastWriteTime`）× 体量桶表**、**≥100MB Top-50 大文件**（经 `GetCompressedFileSizeW` 附实际占盘 `allocated_bytes`，防稀疏 `.vhdx`/`Docker.raw` 与云占位虚胖误报），以及 **全卷已用 − 已枚举合计 = `unaccounted_bytes（<Unknown>）`**（覆盖卷影 VSS、`System Volume Information` 与受限跳过区）。支持结构化筛选参数（`-MinSizeMB`、`-MinAgeDays`、`-IncludeExt`、`-ExcludeExt` 仅筛大文件候选，不扭曲目录与矩阵总账）及带每目录分桶快照的 `-StreamOut <jsonl> [-Resume]` 断点续扫。
+6. **四级漏斗只读查重（`scripts/probe.ps1 -Action dupes`）**：面向重复安装包/ISO/媒体/模型副本——**第 0 关**跳过 0 字节、重解析点与云占位文件（严禁哈希触发 OneDrive/云盘回源下载）并应用 `-MinSizeMB`（默认 10MB）/扩展名/年龄筛选；**第 1 关**按字节分组并经 Win32 `GetFileInformationByHandle` 识别 NTFS 硬链接（`pnpm store` 等硬链接同块只占一份空间，单列 `hardlink_clusters` 标 `reclaimable_bytes=0`，严禁误当重复删掉）；**第 2 关**仅读同大小候选的头 4KB + 尾 4KB 算局部 SHA256；**第 3 关**仅对碰撞组流式全文件 SHA256 确认并按 `allocated_bytes` 计算真实可回收空间。
+7. **基线 diff**：对比 `overlay.baseline_current`（须为 `baseline-*.json`）的增长/缩小 top5 与新增根目录；单目录月增 `>20GB` 且无解释 → P1。
+- **常见坑**：`Get-PhysicalDisk | Select FriendlyName,MediaType` 查出 HDD/SMR 时优先使用 `probe -Action env` 记下的 `fast_scanners`（WizTree / Everything）或 `-StreamOut` 分批落盘；`LastAccessTime` 在 Windows 默认可能延迟刷新，分桶口径固定写明 `LastWriteTime`。
 
 ## 扫描方法与实测判据
 
@@ -78,4 +80,4 @@ Get-ChildItem -LiteralPath $dir -Recurse -File -Force -EA SilentlyContinue | Gro
   - 命令：`Get-ChildItem -LiteralPath $root -Recurse -Directory -Force -EA SilentlyContinue | Where-Object { @(Get-ChildItem -LiteralPath $_.FullName -Force -EA SilentlyContinue).Count -eq 0 } | Select-Object FullName`
 
 ## 输出 schema
-`## 磁盘空间`：卷表（总量/剩/红线）→ 根目录 top 表 → 每热点一行（体量/最后修改/归属）→ 缓存清单 → 与基线 diff 表（全数值标注采样时刻）。
+`## 磁盘空间`：卷表（总量/剩/红线 + `<Unknown>` 未归账差额）→ 根目录 top 表 → 3×3 年龄×体量矩阵与 Top 大文件（含逻辑 vs 实占及筛选条件 `applied_filters`）→ 规则命中候选清单（附 `does_not_touch` 与 `preferred_command`）→ 可选重复文件组（含 `hardlink_clusters` 与真实可回收 `allocated_bytes`）→ 与基线 diff 表（全数值标注采样时刻）。

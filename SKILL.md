@@ -9,7 +9,7 @@ description: >-
   at runtime instead of assuming machine type; diagnosis is read-only and mutations
   require an approved plan batch with before/after verification.
 metadata:
-  version: "0.9.1"
+  version: "0.9.7"
   category: "system-health"
   platforms: "windows (v1 roadmap: macOS/Linux)"
   scope: "diagnose-plan-execute-gated"
@@ -53,7 +53,7 @@ metadata:
 | 首跑 / 建档 / 不知道这台机器承担什么角色 | `references/stage-00-bootstrap.md` + `assets/overlay.template.yaml` + `scripts/probe.ps1 -Action env` |
 | 通用编码/路径/编码避坑或查 `overlay` 字段语义 | `references/conventions.md` |
 | 认出机器所属行业/开发/创意/特殊场景信号 | `references/domain-packs.md` |
-| 盘满了 / 空间去哪了 / 安装包太占空间 | `references/stage-02-disk.md` + `scripts/probe.ps1 -Action space` |
+| 盘满了 / 空间去哪了 / 安装包太占空间 / 缓存怎么清 | `references/stage-02-disk.md` + `assets/cleanup-rules.json` + `scripts/probe.ps1 -Action space\|rules\|dupes` |
 | 装了什么 / PATH 乱 / CLI 登录报错或身份异常 | `references/stage-04-dev-env.md` |
 | 安全吗 / 防火墙端口暴露 / 陌生根证书 | `references/stage-07-security.md` |
 | 开机莫名自启 / 怀疑被浏览器或任务劫持 | `references/stage-08-persistence.md` |
@@ -69,7 +69,7 @@ metadata:
 | AI Agent 缓存占空间 / 沙箱账户 / 凭据进同步盘 | `references/stage-10-agents.md` |
 | 硬件驱动固件 / 目录规则 / 终端崩溃 / 性能压测 / 照片原片 | `references/stage-01-hardware.md` / `stage-03-rules.md` / `stage-12-terminals.md` / `stage-14-benchmark.md` / `stage-17-media.md` |
 
-> **脚本调用防踩坑**：PS 5.1 `-File` 会丢弃数组第二个值，多 `-Roots` 务必用 `powershell -Command "& '.\scripts\...' -Roots @('A','B')"`；回收站路径全程单引号 `'E:\$Recycle.Bin'`。
+> **脚本调用防踩坑**：PS 5.1 `-File` 会丢弃数组第二个值，多 `-Roots` 务必用 `powershell -Command "& '.\scripts\...' -Roots @('A','B')"`；回收站路径全程单引号 `'E:\$Recycle.Bin'`；跨 WSL2/管道调用请加 `-NoProfile -NonInteractive -InputFormat None` 与 `< /dev/null`。
 
 ## 4. 输出形状与未脚本化边界
 
