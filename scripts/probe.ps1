@@ -74,7 +74,7 @@ param(
   [switch]$QuarantineMode
 )
 
-$SKILL_VERSION = "1.0.0"
+$SKILL_VERSION = "1.0.1"
 $SCHEMA_VERSION = "1.2"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $utf8Bom = New-Object System.Text.UTF8Encoding($true)
@@ -173,7 +173,7 @@ $script:hasNativeSize = Initialize-NativeFileHelper
 function Get-WinLongSafePath {
   param([string]$Path)
   if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
-  if ($Path.Length -ge 240 -and -not $Path.StartsWith('\\?\') -and $Path -match '^[A-Za-z]:\\') {
+  if (-not $Path.StartsWith('\\?\') -and $Path -match '^[A-Za-z]:\\' -and ($Path.Length -ge 240 -or $Path -match '[\s\.]$')) {
     return ('\\?\' + $Path)
   }
   return $Path
@@ -184,10 +184,10 @@ function Resolve-WinCanonicalPath {
   if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
   $t = $Path.TrimEnd('\')
   if ($t -match '^[A-Za-z]:$') { $t = $t + '\' }
-  if ($t.Length -lt 240 -and -not $t.StartsWith('\\?\')) {
+  if ($t.Length -lt 240 -and -not $t.StartsWith('\\?\') -and ($t -notmatch '[\s\.]$')) {
     try {
       $t = [IO.Path]::GetFullPath($t)
-      if ($t.Length -gt 3) { $t = $t.TrimEnd('\') }
+      if ($t.Length -gt 3 -and ($t -notmatch '[\s\.]$')) { $t = $t.TrimEnd('\') }
     } catch { }
   }
   return $t
@@ -534,6 +534,25 @@ function Write-BaselineMarkdown {
         $mdLines += ("| {0} | {1} | {2:N3} | {3} | {4} |" -f $vr.root, $vr.scope, ($vr.enumerated_bytes/1GB), $usedLabel, $unLabel)
       }
     }
+    $rbList = @()
+    if ($spSnap -is [System.Collections.IDictionary] -and $spSnap.Contains("recycle_bin")) { $rbList = @($spSnap["recycle_bin"]) }
+    elseif ($null -ne $spSnap.PSObject.Properties["recycle_bin"]) { $rbList = @($spSnap.recycle_bin) }
+    if ($rbList.Count -gt 0) {
+      $mdLines += @("", "| `$Recycle.Bin` 盘 | 体量(GB) | 文件数 | 状态说明 |", "|---|---:|---:|---|")
+      foreach ($rbItem in $rbList) {
+        $rbStat = if (-not $rbItem.exists) { "无回收站目录" } elseif ($rbItem.restricted) { "部分受限" } elseif ($rbItem.bytes -gt 0) { "待确认（清零须单独授权 Batch 3）" } else { "空" }
+        $mdLines += ("| {0} | {1:N3} | {2} | {3} |" -f $rbItem.drive, ($rbItem.bytes/1GB), $rbItem.files, $rbStat)
+      }
+    }
+    $hfList = @()
+    if ($spSnap -is [System.Collections.IDictionary] -and $spSnap.Contains("hygiene_flags")) { $hfList = @($spSnap["hygiene_flags"]) }
+    elseif ($null -ne $spSnap.PSObject.Properties["hygiene_flags"]) { $hfList = @($spSnap.hygiene_flags) }
+    if ($hfList.Count -gt 0) {
+      $mdLines += @("", "| 根卫生提示 | 路径 / 位置 | 说明 |", "|---|---|---|")
+      foreach ($hf in $hfList) {
+        $mdLines += ("| {0} | ``{1}`` | {2} |" -f $hf.kind, $hf.path, $hf.note)
+      }
+    }
   }
   [IO.File]::WriteAllText($MdPath, ($mdLines -join "`r`n"), $utf8Bom)
 }
@@ -569,6 +588,47 @@ function Get-RecycleBinMetrics([string]$d) {
     } catch { $restricted = $true }
   }
   return [pscustomobject]@{ exists = $true; bytes = $sum; files = $files; restricted = $restricted }
+}
+
+function Test-PseudoEmptyAgentShell([string]$DirPath) {
+  $name = Split-Path $DirPath -Leaf
+  $isTs = ($name -match '^\d{4}[-_]\d{2}[-_]\d{2}([-_]\d{2}){1,3}$')
+  $agentDirs = @(".workbuddy",".claude",".codex",".reasonix",".smart-env",".agent",".cursor",".gemini")
+  $safe = Get-WinLongSafePath -Path $DirPath
+  $rDi = try { New-Object System.IO.DirectoryInfo $safe } catch { $null }
+  if (-not $rDi -or -not $rDi.Exists -or ($rDi.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    return [pscustomobject]@{ is_pseudo_empty = $false; is_timestamp_name = $isTs; file_count = 0; bytes = 0L; reason = "" }
+  }
+  $prefixLen = $rDi.FullName.TrimEnd('\').Length
+  $stk = New-Object System.Collections.Stack
+  $stk.Push($rDi)
+  $fc = 0; [int64]$tot = 0L; $dirsVisited = 0; $allMeta = $true
+  while ($stk.Count -gt 0) {
+    $cur = $stk.Pop()
+    $dirsVisited++
+    if ($dirsVisited -gt 24) { $allMeta = $false; break }
+    try {
+      foreach ($e in $cur.EnumerateFileSystemInfos('*', [IO.SearchOption]::TopDirectoryOnly)) {
+        if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+        if ($e -is [IO.DirectoryInfo]) {
+          $stk.Push($e)
+        } else {
+          $fc++
+          $tot += [int64]$e.Length
+          $rel = if ($e.FullName.Length -gt ($prefixLen + 1)) { $e.FullName.Substring($prefixLen + 1) } else { $e.Name }
+          $topSeg = ($rel -split '[\\/]')[0]
+          if (-not ($rel -match '[\\/]' -and ($agentDirs -contains $topSeg.ToLowerInvariant())) -or $fc -gt 15 -or $tot -ge 65536) {
+            $allMeta = $false
+            break
+          }
+        }
+      }
+    } catch { $allMeta = $false; break }
+    if (-not $allMeta) { break }
+  }
+  $hit = ($allMeta -and (($isTs -and $fc -eq 0) -or ($fc -gt 0 -and $tot -lt 65536)))
+  $why = if (-not $hit) { "" } elseif ($fc -eq 0) { "纯时间戳空目录（疑似 WorkBuddy/IDE 遗留会话壳，核查客户端默认工作区设置）" } elseif ($isTs) { "纯时间戳+仅含<64KB Agent 元数据伪空壳（$fc 文件/$tot B）" } else { "仅含<64KB Agent 元数据伪空壳（$fc 文件/$tot B，非真实业务项目）" }
+  return [pscustomobject]@{ is_pseudo_empty = $hit; is_timestamp_name = $isTs; file_count = $fc; bytes = $tot; reason = $why }
 }
 
 function Invoke-EnvAction {
@@ -747,11 +807,20 @@ function Invoke-SpaceAction {
 
   $targetDirs = New-Object System.Collections.ArrayList
   $rootMeta = @{}
+  $scannedDrives = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  $hygieneFlags = New-Object System.Collections.ArrayList
+  $anchorRootFiles = @("AGENTS.md","CLAUDE.md","GEMINI.md","README.md",".gitignore",".gitattributes",".editorconfig","LICENSE","desktop.ini","thumbs.db","pagefile.sys","hiberfil.sys","swapfile.sys")
+
   foreach ($td in $TopDirs) {
-    if (-not [string]::IsNullOrWhiteSpace($td)) { [void]$targetDirs.Add((Resolve-WinCanonicalPath -Path $td)) }
+    if (-not [string]::IsNullOrWhiteSpace($td)) {
+      $cTd = Resolve-WinCanonicalPath -Path $td
+      [void]$targetDirs.Add($cTd)
+      if ($cTd -match '^([A-Za-z]:)') { [void]$scannedDrives.Add($Matches[1].ToUpperInvariant()) }
+    }
   }
   foreach ($r in $Roots) {
     if ([string]::IsNullOrWhiteSpace($r)) { continue }
+    if ($r -match '^([A-Za-z]:)') { [void]$scannedDrives.Add($Matches[1].ToUpperInvariant()) }
     if (-not ((Test-Path -LiteralPath $r) -or [IO.Directory]::Exists((Get-WinLongSafePath $r)))) {
       $overallScanStatus = "failed"
       [void]$spaceRestrictions.Add([ordered]@{
@@ -765,6 +834,8 @@ function Invoke-SpaceAction {
     $rNorm = Resolve-WinCanonicalPath -Path $r
     $rSafe = Get-WinLongSafePath $rNorm
     $rootFilesBytes = 0L; $rootFilesAlloc = 0L; $rootFilesCount = 0
+    $looseFilesInRoot = New-Object System.Collections.ArrayList
+    $gitChildCount = 0
     try {
       $rdi = New-Object System.IO.DirectoryInfo $rSafe
       foreach ($rf in $rdi.EnumerateFiles('*', [IO.SearchOption]::TopDirectoryOnly)) {
@@ -776,6 +847,10 @@ function Invoke-SpaceAction {
         $rootFilesBytes += $rLen
         $rootFilesAlloc += $rAlloc
         $rootFilesCount++
+        if ($rf.Name -match '[\x00-\x1F\?\<\>\|]' -or $rf.Name -match '[ \.]$') {
+          [void]$hygieneFlags.Add([ordered]@{ kind = "weird-name"; path = $rf.FullName; note = "文件名含控制字符或尾随空格/点号，需 \\\\?\\ 前缀安全处置" })
+        }
+        if (-not ($anchorRootFiles -contains $rf.Name)) { [void]$looseFilesInRoot.Add($rf.Name) }
         Update-AgeSizeMatrix -MatrixBuckets $matrix -FileLength $rLen -LastWrite $rf.LastWriteTime -NowRef $nowTs
         if ($effLargeMinBytes -gt 0 -and $rLen -ge $effLargeMinBytes) {
           if (Test-FileMatchesFilter -FileObj $rf -MinBytes $effLargeMinBytes -MinAgeDaysVal $MinAgeDays -IncExts $incExts -ExcExts $excExts -NowTime $nowTs) {
@@ -793,19 +868,40 @@ function Invoke-SpaceAction {
     $totalAllocBytes += $rootFilesAlloc
     $rootMeta[$r] = [ordered]@{ norm = $rNorm; root_files_bytes = $rootFilesBytes; root_files_count = $rootFilesCount; children_sum = 0L }
 
-    $children = @(Get-ChildItem -LiteralPath $rNorm -Directory -Force -EA SilentlyContinue)
+    $children = try {
+      $rdiKids = New-Object System.IO.DirectoryInfo $rSafe
+      @($rdiKids.EnumerateDirectories('*', [IO.SearchOption]::TopDirectoryOnly))
+    } catch { @() }
     foreach ($c in $children) {
       if ($c.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+      $cFullClean = if ($c.FullName.StartsWith('\\?\')) { $c.FullName.Substring(4) } else { $c.FullName }
+      if ($c.Name -match '[\x00-\x1F\?\<\>\|]' -or $c.Name -match '[ \.]$') {
+        [void]$hygieneFlags.Add([ordered]@{ kind = "weird-name"; path = $cFullClean; note = "目录名含控制字符或尾随空格/点号，须用 \\\\?\\ 前缀安全改名或清理" })
+      }
+      $cGitSafe = Get-WinLongSafePath (Join-Path $cFullClean ".git")
+      if ((Test-Path -LiteralPath (Join-Path $cFullClean ".git")) -or [IO.Directory]::Exists($cGitSafe) -or [IO.File]::Exists($cGitSafe)) {
+        $gitChildCount++
+      }
       $skip = $false
       foreach ($xn in $ExcludeNames) {
         if ($c.Name -ieq $xn) { $skip = $true; break }
       }
       if (-not $skip) {
         foreach ($ep in $ExcludePaths) {
-          if (-not [string]::IsNullOrWhiteSpace($ep) -and ((Resolve-WinCanonicalPath -Path $c.FullName) -ieq (Resolve-WinCanonicalPath -Path $ep))) { $skip = $true; break }
+          if (-not [string]::IsNullOrWhiteSpace($ep) -and ((Resolve-WinCanonicalPath -Path $cFullClean) -ieq (Resolve-WinCanonicalPath -Path $ep))) { $skip = $true; break }
         }
       }
-      if (-not $skip) { [void]$targetDirs.Add((Resolve-WinCanonicalPath -Path $c.FullName)) }
+      if (-not $skip) {
+        $pe = Test-PseudoEmptyAgentShell -DirPath $cFullClean
+        if ($pe.is_pseudo_empty) {
+          $hKind = if ($pe.is_timestamp_name) { "timestamp-shell" } else { "agent-pseudo-empty-shell" }
+          [void]$hygieneFlags.Add([ordered]@{ kind = $hKind; path = $cFullClean; note = $pe.reason })
+        }
+        [void]$targetDirs.Add((Resolve-WinCanonicalPath -Path $cFullClean))
+      }
+    }
+    if ($gitChildCount -ge 2 -and $looseFilesInRoot.Count -gt 0) {
+      [void]$hygieneFlags.Add([ordered]@{ kind = "portfolio-loose-files"; path = $rNorm; note = "多项目容器根一级存在散落文件: $($looseFilesInRoot -join ', ')" })
     }
   }
 
@@ -962,6 +1058,18 @@ function Invoke-SpaceAction {
     "受控目录采集: $($targetDirs.Count) 个顶层目录（跳过 ReparsePoint，单目录上限 $MaxFilesPerDir 文件$rNote）"
   }
 
+  $recycleBinSummary = New-Object System.Collections.ArrayList
+  foreach ($sDrv in ($scannedDrives | Sort-Object)) {
+    $rbM = Get-RecycleBinMetrics $sDrv
+    [void]$recycleBinSummary.Add([ordered]@{
+      drive      = $sDrv
+      exists     = [bool]$rbM.exists
+      bytes      = [int64]$rbM.bytes
+      files      = [int]$rbM.files
+      restricted = [bool]$rbM.restricted
+    })
+  }
+
   $spaceDiagnostics = [ordered]@{
     generated_at                      = $genAt
     age_method                        = "LastWriteTime"
@@ -975,6 +1083,8 @@ function Invoke-SpaceAction {
     age_size_matrix                   = $matrix
     top_large_files                   = @($topLargeOut)
     volume_reconciliation             = @($volReconcile.ToArray())
+    recycle_bin                       = @($recycleBinSummary.ToArray())
+    hygiene_flags                     = @($hygieneFlags.ToArray())
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Baseline)) {
@@ -1058,6 +1168,8 @@ function Invoke-SpaceAction {
     age_size_matrix                    = $matrix
     top_large_files                    = @($topLargeOut)
     volume_reconciliation              = @($volReconcile.ToArray())
+    recycle_bin                        = @($recycleBinSummary.ToArray())
+    hygiene_flags                      = @($hygieneFlags.ToArray())
     restrictions                       = @($spaceRestrictions.ToArray())
   }
   $spaceJson = $spaceResult | ConvertTo-Json -Depth 10

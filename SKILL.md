@@ -9,7 +9,7 @@ description: >-
   at runtime instead of assuming machine type; diagnosis is read-only and mutations
   require an approved plan batch with before/after verification.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   category: "system-health"
   platforms: "windows (v2 roadmap: macOS/Linux)"
   scope: "diagnose-plan-execute-gated"
@@ -40,7 +40,7 @@ metadata:
 1. **诊断只读与落盘隔离**：只查不改；写入仅限 `overlay.output_dir` 下的报告/基线/overlay。
 2. **首轮定级与五要素证据**：明确的当前危险第一轮即报警，缺历史仅限趋势标"无基线"；发现须含事实/影响/证据/严重度/规则。
 3. **受限与副作用如实声明**：遇无权限/AV/CLM/离线/云占位标"受限"不猜；会写盘、占带宽或执行 profile 的检查非只读，须先征得同意。
-4. **自包含与零个人路径**：技能包内出现个人绝对路径即为缺陷；本机事实只进 `overlay.yaml` 与 `baseline-*.json`。
+4. **自包含与总根防污染**：技能包内出现个人绝对路径即为缺陷；本机事实只进 `overlay.yaml` 与 `baseline-*.json`；禁止在多项目容器根写散件或平级建分身副本。
 5. **先诊断、批内执行、重测关闭**：破坏性动作须在已批准方案批次内走隔离区；问题关闭必须重测原证据条件。
 
 ## 3. 阶段分层与路由表（完整阶段表在 `README.md`，供人阅读；agent 不必加载）
@@ -59,14 +59,14 @@ metadata:
 | 开机莫名自启 / 怀疑被浏览器或任务劫持 | `references/stage-08-persistence.md` |
 | 备份够不够 / 仓库同步是真是假 | `references/stage-11-backup.md` + `scripts/project-doctor.ps1` |
 | 网络慢 / 代理黑洞 / VPN / 测三目标链路基线 | `references/stage-16-network.md` |
-| 删不干净 / 死快捷方式 / 权限拒删 / 服务空跑 | `references/stage-15-residue.md` |
+| 删不干净 / 死快捷方式 / 伪空壳 / 控制字符名 / 服务空跑 | `references/stage-15-residue.md` |
 | 要动手删改 / 出批前预览 / 验空间真释放了 | `references/execution-safety.md` + `docs/design/execution-safety.md` + `scripts/probe.ps1 -Action delta` |
 | 写报告 / 基线校验 / 与上一轮做结构 diff | `references/stage-13-report.md` + `assets/baseline.schema.json` + `scripts/baseline-check.ps1` |
 | 文档或笔记爆炸 / 会话与工作日志膨胀 | `references/memory-hygiene.md` + `scripts/probe.ps1 -Action docs` |
 | 虚拟机 / 模拟器 / 怀疑隐藏 WSL 或孤儿 vhdx | `references/stage-05-virtualization.md` |
 | 查最近新装了什么软件、系统服务或自启变化 | `references/stage-06-software-diff.md` |
 | 系统频繁出错 / 软件闪退查堆栈与噪音基线 | `references/stage-09-logs.md` |
-| AI Agent 缓存占空间 / 沙箱账户 / 凭据进同步盘 | `references/stage-10-agents.md` |
+| AI Agent 缓存与时间戳壳 / 沙箱账户 / 凭据进同步盘 | `references/stage-10-agents.md` |
 | 硬件驱动固件 / 目录规则 / 终端崩溃 / 性能压测 / 照片原片 | `references/stage-01-hardware.md` / `stage-03-rules.md` / `stage-12-terminals.md` / `stage-14-benchmark.md` / `stage-17-media.md` |
 
 > **脚本调用防踩坑**：PS 5.1 `-File` 会丢弃数组第二个值，多 `-Roots` 务必用 `powershell -Command "& '.\scripts\...' -Roots @('A','B')"`；回收站路径全程单引号 `'E:\$Recycle.Bin'`；跨 WSL2/管道调用请加 `-NoProfile -NonInteractive -InputFormat None` 与 `< /dev/null`。

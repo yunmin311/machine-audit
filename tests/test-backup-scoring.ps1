@@ -342,6 +342,33 @@ if ($jOk1 -and $jOk2) {
   Assert $true "ReparsePoint 跳过(嵌套) 非 NTFS/受限环境跳过"
 }
 
+# ---- 总根工作区卫生与同源远端分身检测（v1.0.1）----
+$hygBare = Join-Path $WorkRoot "hyg-upstream.git"
+$hygRoot = Join-Path $WorkRoot "hyg-root"
+New-Item -ItemType Directory -Path $hygBare, $hygRoot -Force | Out-Null
+git -C $hygBare init --bare -q 2>$null
+$hygSeed = Join-Path $WorkRoot "hyg-seed"
+New-CommitRepo $hygSeed @{ "README.md" = "seed" }
+git -C $hygSeed remote add origin $hygBare 2>$null
+git -C $hygSeed push -u origin main -q 2>$null
+git clone -q $hygBare (Join-Path $hygRoot "app") 2>$null
+git clone -q $hygBare (Join-Path $hygRoot "app-fresh") 2>$null
+$tsMemDir = Join-Path $hygRoot "2026-11-19-13-21-31\.workbuddy\memory"
+[void][IO.Directory]::CreateDirectory($tsMemDir)
+[IO.File]::WriteAllText((Join-Path $tsMemDir "2026-11-19.md"), "# daily log", (New-Object System.Text.UTF8Encoding($false)))
+[void][IO.Directory]::CreateDirectory("\\?\$hygRoot\weird-space ")
+[IO.File]::WriteAllText((Join-Path $hygRoot "AGENTS.md"), "# anchor", (New-Object System.Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText((Join-Path $hygRoot "stray-draft.md"), "# stray", (New-Object System.Text.UTF8Encoding($false)))
+
+& $DoctorPath -Roots $hygRoot -OutDir $outDir | Out-Null
+$csvHyg = Import-Csv ((Get-ChildItem $outDir -Filter *.csv | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName)
+$mdHyg = Get-Content ((Get-ChildItem $outDir -Filter *.md | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName) -Raw -Encoding UTF8
+Assert ($mdHyg -match '## 同源分身与工作区卫生提示' -and $mdHyg -match '同源远端分身' -and $mdHyg -match 'hyg-root/app' -and $mdHyg -match 'hyg-root/app-fresh' -and $mdHyg -match '疑似 app 分身') "doctor 检出同源远端分身与 -fresh 后缀分身"
+$rowTs = $csvHyg | Where-Object Name -eq "2026-11-19-13-21-31" | Select-Object -First 1
+$rowWeird = $csvHyg | Where-Object { $_.Name -like "weird-space*" } | Select-Object -First 1
+Assert ($null -ne $rowTs -and $rowTs.Kind -eq "timestamp-shell" -and $null -ne $rowWeird -and $rowWeird.Kind -eq "weird-name") "doctor 将带 .workbuddy/memory 的时间戳目录标 timestamp-shell，尾随空格标 weird-name"
+Assert ($mdHyg -match '多项目容器根一级散件.*stray-draft\.md' -and ($mdHyg -notmatch '多项目容器根一级散件.*AGENTS\.md')) "doctor 捕获总根散件 stray-draft.md 且放行 AGENTS.md"
+
 # 自清理（自身文件政策：fixture/产物不残留）
 # v0.8 修正：本条原先在脚本最末行，中途任何异常都到不了——实测在 %TEMP% 留下 5 项残留
 # （ma-final-check / ma-final-fixtures / ma-verify-root / 两个 .log）。清理必须进 finally，
@@ -350,7 +377,11 @@ if ($jOk1 -and $jOk2) {
   foreach ($jl in @($rpJuncs)) {
     if ($jl -and (Test-Path -LiteralPath $jl)) { cmd /c rmdir "$jl" 2>$null }
   }
+  if ($hygRoot) { try { [IO.Directory]::Delete("\\?\$hygRoot\weird-space ", $true) } catch {} }
   Remove-Item -LiteralPath $WorkRoot -Recurse -Force -EA SilentlyContinue
+  if (Test-Path -LiteralPath $WorkRoot) {
+    try { [IO.Directory]::Delete("\\?\$WorkRoot", $true) } catch {}
+  }
   if (Test-Path -LiteralPath $WorkRoot) {
     $script:pass = $false
     Write-Host "FAIL  临时区未清理: $WorkRoot（可能被进程占用，需人工确认后删除）" -ForegroundColor Red

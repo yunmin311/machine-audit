@@ -42,7 +42,7 @@ try {
   Assert (Test-Path -LiteralPath $bMdPath) "probe -Action env -WriteMarkdown 写出基线 MD"
 
   $bjEnv = Get-Content -LiteralPath $bJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-  Assert ($bjEnv.schema_version -eq "1.2" -and $bjEnv.meta.skill_version -eq "1.0.0" -and @($bjEnv.top_dirs).Count -eq 0) "env 输出 schema_version=1.2, skill_version=1.0.0, top_dirs=[]"
+  Assert ($bjEnv.schema_version -eq "1.2" -and $bjEnv.meta.skill_version -eq "1.0.1" -and @($bjEnv.top_dirs).Count -eq 0) "env 输出 schema_version=1.2, skill_version=1.0.1, top_dirs=[]"
   Assert (($null -ne $bjEnv.environment.os) -and ($null -ne $bjEnv.environment.privilege) -and ($null -ne $bjEnv.environment.cloud_redirection) -and (@($bjEnv.drives).Count -gt 0)) "env 输出含 os/privilege/cloud_redirection/drives 全部约定字段"
 
   & $hostExe -NoProfile -ExecutionPolicy Bypass -File $checker -Path $bJsonPath | Out-Null
@@ -487,6 +487,30 @@ try {
   $sp83 = & $hostExe -NoProfile -Command "& '$probe' -Action space -Roots @('$shortRoot83') -StreamOut '$stream83' -Resume" | Out-String | ConvertFrom-Json
   Assert ($LASTEXITCODE -eq 0 -and $sp83.resumed_from_stream_count -eq 1 -and @($sp83.volume_reconciliation).Count -eq 1 -and $sp83.volume_reconciliation[0].enumerated_bytes -eq 20544) "Torture-9e: 8.3 短路径 ($shortRoot83) 下 -Resume 命中(1)且子树对账精准(20544B)"
 
+  # ---- 10. 工作区总根卫生、伪空壳、异常名与 $Recycle.Bin 摘要（v1.0.1）----
+  $hygSp = Join-Path $WorkRoot 'hyg-space-root'
+  [void][IO.Directory]::CreateDirectory((Join-Path $hygSp 'repo-a\.git'))
+  [void][IO.Directory]::CreateDirectory((Join-Path $hygSp 'repo-b\.git'))
+  $tsHygDir = Join-Path $hygSp '2026-11-19-13-21-31\.workbuddy\memory'
+  [void][IO.Directory]::CreateDirectory($tsHygDir)
+  [IO.File]::WriteAllText((Join-Path $tsHygDir '2026-11-19.md'), '# session log', (New-Object System.Text.UTF8Encoding($false)))
+  $metaShellDir = Join-Path $hygSp 'meta-only\.codex'
+  [void][IO.Directory]::CreateDirectory($metaShellDir)
+  [IO.File]::WriteAllText((Join-Path $metaShellDir 'state.json'), '{}', (New-Object System.Text.UTF8Encoding($false)))
+  [void][IO.Directory]::CreateDirectory("\\?\$hygSp\bad-trail ")
+  [IO.File]::WriteAllText((Join-Path $hygSp 'AGENTS.md'), '# anchor', (New-Object System.Text.UTF8Encoding($false)))
+  [IO.File]::WriteAllText((Join-Path $hygSp 'stray-report.md'), '# stray', (New-Object System.Text.UTF8Encoding($false)))
+
+  $sp10 = & $hostExe -NoProfile -Command "& '$probe' -Action space -Roots @('$hygSp')" | Out-String | ConvertFrom-Json
+  Assert ($LASTEXITCODE -eq 0 -and @($sp10.recycle_bin).Count -ge 1 -and $null -ne $sp10.recycle_bin[0].bytes) "space 输出所扫卷的 recycle_bin 积压快照"
+  $tsFlag = @($sp10.hygiene_flags | Where-Object { $_.kind -eq 'timestamp-shell' -and $_.path -like '*2026-11-19-13-21-31' }).Count
+  $agFlag = @($sp10.hygiene_flags | Where-Object { $_.kind -eq 'agent-pseudo-empty-shell' -and $_.path -like '*meta-only' }).Count
+  Assert ($tsFlag -eq 1 -and $agFlag -eq 1) "space 精准捕获含 2KB 元数据的 timestamp-shell 与 agent-pseudo-empty-shell"
+  $wdFlag = @($sp10.hygiene_flags | Where-Object { $_.kind -eq 'weird-name' -and $_.path -like '*bad-trail*' }).Count
+  Assert ($wdFlag -eq 1) "space 捕获尾随空格畸形目录名 weird-name"
+  $pfItem = $sp10.hygiene_flags | Where-Object { $_.kind -eq 'portfolio-loose-files' } | Select-Object -First 1
+  Assert ($null -ne $pfItem -and $pfItem.note -match 'stray-report\.md' -and ($pfItem.note -notmatch 'AGENTS\.md')) "space 捕获多项目总根散件 stray-report.md 且放行 AGENTS.md"
+
   Write-Host ""
   if ($script:pass) { Write-Host "全部通过" -ForegroundColor Green } else { Write-Host "存在失败断言" -ForegroundColor Red }
 } finally {
@@ -495,6 +519,7 @@ try {
   if ($junctionMade -and $jLink -and (Test-Path -LiteralPath $jLink)) {
     cmd /c rmdir "$jLink" 2>$null
   }
+  if ($hygSp) { try { [IO.Directory]::Delete("\\?\$hygSp\bad-trail ", $true) } catch {} }
   Remove-Item -LiteralPath $WorkRoot -Recurse -Force -EA SilentlyContinue
   if (Test-Path -LiteralPath $WorkRoot) {
     try { [IO.Directory]::Delete("\\?\$WorkRoot", $true) } catch {}

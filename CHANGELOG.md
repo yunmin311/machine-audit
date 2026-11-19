@@ -2,6 +2,17 @@
 
 > 倒序排列：最新在最上。`0.6.0` 与 `0.6.4` 两个版本号跳过未发布（改动并入相邻条目）。
 
+## 1.0.1 — 2026-11-19（工作区总根防污染 · 伪空壳与同源远端分身识别 · 回收站快照）
+
+针对真实长期使用中出现的"客户端在盘根反复生成时间戳空壳（如 `YYYY-MM-DD-HH-mm-ss` 内仅含 `2KB` `.workbuddy/memory`）、删除后积压回收站、多项目容器根一级散落文件与同源兄弟克隆目录、以及末尾控制字符/尾随空格异常目录名"完成只读探测增强与规范加固：
+
+- **工作区总根边界与伪空壳规则 (`SKILL.md` · `references/`)**：
+  - `references/conventions.md` 新增「工作区总根边界」：当工作目录为多项目总容器根（一级含 `>=2` 个 `.git` 子仓）时，禁止在总根新建散件/分身副本（`-fresh`/`-check`/`-v2`/`-gapfix`），隔离验证统一进对应仓 `.worktrees/` 或 `_scratch/`/`$env:TEMP`，禁止向纯时间戳空壳写 `.workbuddy/memory/`。
+  - `references/stage-15-residue.md` / `stage-03-rules.md` / `stage-10-agents.md` / `stage-02-disk.md` 补全「Agent `<64KB` 伪空壳（`.workbuddy`/`.claude`/`.codex`/`.reasonix`）」「`\r`/`\n` 与尾随空格 `\\?\` 处置」「回收站积压检查（仍走铁律 5 独立批准）」及「客户端默认工作区设置溯源」规程。
+- **总根卫生与伪空壳只读探测 (`scripts/probe.ps1`)**：`-Action space` 新增 `recycle_bin` 卷积压快照与 `hygiene_flags`（`timestamp-shell` / `agent-pseudo-empty-shell` / `weird-name` / `portfolio-loose-files`），并同步渲染进 `-WriteMarkdown` `§SpaceBreakdown`；扩展 `Get-WinLongSafePath` `\\?\` 对尾随空格/点号路径的保护，同时保护 `Resolve-WinCanonicalPath` 不截去尾随空格。
+- **同源分身聚类与容器根巡检 (`scripts/project-doctor.ps1`)**：新增同源远端 URL 规范化分身聚类（兼容 SSH/HTTPS/本地 bare 仓）、`-fresh/-check/-v2/-gapfix` 后缀分身识别、非 git 目录下细分 `timestamp-shell` / `agent-empty-shell` / `weird-name`，以及多项目容器根一级散件清单 `## 同源分身与工作区卫生提示`（自动放行 `AGENTS.md` 等锚点文件）。
+- **回归测试扩充 (`tests/`)**：`test-backup-scoring.ps1` 增至 `50` 条、`test-baseline-schema.ps1` `33` 条、`test-agent-helpers.ps1` 增至 `71` 条，全套共计 **`154`** 条全部通过。
+
 ## 1.0.0 — 2026-11-18（Windows 生产正式版 · E2E 全链路与离线盲测 8 场景全通过 · README 徽章定版）
 
 完成 `v0.9.0 → v0.9.7` 全阶段重构与边界加固后的首个 Windows 生产正式版本（`19` 审计阶段、`62` 领域包、`18` 条声明式规则、`Schema v1.2`、`147` 条回归断言，GitHub Actions `windows-latest` 全绿）：

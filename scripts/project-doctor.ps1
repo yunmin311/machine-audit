@@ -44,15 +44,43 @@ if (-not (Test-Path -LiteralPath $OutDir)) { [IO.Directory]::CreateDirectory($Ou
 $stamp = Get-Date -Format "yyyy-MM-dd"
 $runId = Get-Date -Format "yyyyMMdd-HHmmssfff"
 $rows = @()
+$remoteCloneGroups = @{}
+$looseRootFiles = New-Object System.Collections.ArrayList
+$rootGitCounts = @{}
+$anchorRootFiles = @("AGENTS.md","CLAUDE.md","GEMINI.md","README.md",".gitignore",".gitattributes",".editorconfig","LICENSE","desktop.ini","thumbs.db")
+$agentMetaDirs = @(".workbuddy",".claude",".codex",".reasonix",".smart-env",".agent",".cursor",".gemini")
+
+function Normalize-RemoteUrlIdentity([string]$url) {
+  if ([string]::IsNullOrWhiteSpace($url)) { return $null }
+  $u = $url.Trim() -replace "(?i)(://)[^/@]+@", '$1'
+  if ($u -match '^(?:ssh://)?git@([^:/]+)[:/](.+?)(?:\.git)?/?$') {
+    return ($Matches[1] + "/" + $Matches[2]).ToLowerInvariant()
+  }
+  if ($u -match '^https?://([^/]+)/(.+?)(?:\.git)?/?$') {
+    return ($Matches[1] + "/" + $Matches[2]).ToLowerInvariant()
+  }
+  return ($u -replace '\.git/?$', '').ToLowerInvariant()
+}
 
 foreach ($root in $Roots) {
   if (-not (Test-Path -LiteralPath $root)) { Write-Warning "根目录不存在: $root"; continue }
   $rootLeaf = Split-Path $root -Leaf
-  Get-ChildItem -LiteralPath $root -Directory -Force | Where-Object { -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } | ForEach-Object {
-    $dir = $_.FullName; $name = $_.Name
-    if ($name -like ".*" -or $name -like "_*" -or $name -eq (Split-Path $root -Leaf)) { $kind = "meta" } else { $kind = "project" }
-
-    if (Test-Path -LiteralPath (Join-Path $dir ".git")) {
+  $rootGitCounts[$rootLeaf] = 0
+  $rootFilesList = New-Object System.Collections.ArrayList
+  try {
+    $rdiRoot = New-Object System.IO.DirectoryInfo $root
+    foreach ($rf in $rdiRoot.EnumerateFiles('*', [IO.SearchOption]::TopDirectoryOnly)) {
+      if ($rf.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+      if (-not ($anchorRootFiles -contains $rf.Name)) { [void]$rootFilesList.Add($rf.Name) }
+    }
+    foreach ($dEntry in $rdiRoot.EnumerateDirectories('*', [IO.SearchOption]::TopDirectoryOnly)) {
+      if ($dEntry.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+      $dir = $dEntry.FullName; $name = $dEntry.Name
+      if ($name -like ".*" -or $name -like "_*" -or $name -eq $rootLeaf) { $kind = "meta" } else { $kind = "project" }
+      $safeDirPrefix = if ($dir.Length -ge 240 -or $dir -match '[\s\.]$') { "\\?\$dir" } else { $dir }
+      $hasGit = (Test-Path -LiteralPath (Join-Path $dir ".git")) -or [IO.Directory]::Exists("$safeDirPrefix\.git") -or [IO.File]::Exists("$safeDirPrefix\.git")
+      if ($hasGit) { $rootGitCounts[$rootLeaf]++ }
+      if ($hasGit) {
       # ---- 采集（关键 git 调用检查退出码——失败保留为失败，不当干净）----
       $remotes     = @(git -C $dir remote 2>$null | Where-Object { $_ })
       $remoteLine  = git -C $dir remote -v 2>$null | Select-Object -First 1
@@ -259,6 +287,16 @@ foreach ($root in $Roots) {
         Remote = if ($upRemote) {
             $rUrl = git -C $dir remote get-url "$upRemote" 2>$null
             $rUrl = "$rUrl" -replace "(?i)(://)[^/@]+@", '$1[redacted]@'
+            $cloneKey = if ($identityState -eq "independent-local" -and $targetPath) {
+              "local:" + $targetPath.TrimEnd('\').ToLowerInvariant()
+            } elseif ($identityState -eq "external-url") {
+              $nk = Normalize-RemoteUrlIdentity "$rUrl"
+              if ($nk) { "url:" + $nk } else { $null }
+            } else { $null }
+            if ($cloneKey) {
+              if (-not $remoteCloneGroups.ContainsKey($cloneKey)) { $remoteCloneGroups[$cloneKey] = New-Object System.Collections.ArrayList }
+              [void]$remoteCloneGroups[$cloneKey].Add("$rootLeaf/$name")
+            }
             $othersList = @($remotes | Where-Object { $_ -ne $upRemote })
             $others = if ($othersList.Count -gt 0) { "（未核验远端: $($othersList -join ','))" } else { "" }
             "$upRemote → $rUrl$others"
@@ -267,18 +305,37 @@ foreach ($root in $Roots) {
       }
     } else {
       $files = 0
+      [int64]$nonGitBytes = 0L
+      $allAgentMetaOnly = $true
       $stk = New-Object System.Collections.Stack
-      $rDi = New-Object System.IO.DirectoryInfo $dir
+      $rDi = New-Object System.IO.DirectoryInfo $safeDirPrefix
+      $dirPrefixLen = $rDi.FullName.TrimEnd('\').Length
       if (-not ($rDi.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $stk.Push($rDi) }
       while ($stk.Count -gt 0) {
         $curDi = $stk.Pop()
         try {
           foreach ($entry in $curDi.EnumerateFileSystemInfos('*', [IO.SearchOption]::TopDirectoryOnly)) {
             if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-            if ($entry -is [IO.DirectoryInfo]) { $stk.Push($entry) } else { $files++ }
+            if ($entry -is [IO.DirectoryInfo]) { $stk.Push($entry) }
+            else {
+              $files++
+              $nonGitBytes += [int64]$entry.Length
+              if ($allAgentMetaOnly) {
+                $relPath = if ($entry.FullName.Length -gt ($dirPrefixLen + 1)) { $entry.FullName.Substring($dirPrefixLen + 1) } else { $entry.Name }
+                $topSeg = ($relPath -split '[\\/]')[0]
+                if (-not ($relPath -match '[\\/]' -and ($agentMetaDirs -contains $topSeg.ToLowerInvariant()))) {
+                  $allAgentMetaOnly = $false
+                }
+              }
+            }
           }
         } catch { }
       }
+      $isWeirdName = ($name -match '[\x00-\x1F\?\<\>\|]') -or ($name -match '[ \.]$')
+      $isTsName = ($name -match '^\d{4}[-_]\d{2}[-_]\d{2}([-_]\d{2}){1,3}$')
+      if ($isWeirdName) { $kind = "weird-name" }
+      elseif ($isTsName -and ($files -eq 0 -or ($allAgentMetaOnly -and $nonGitBytes -lt 65536))) { $kind = "timestamp-shell" }
+      elseif ($files -gt 0 -and $allAgentMetaOnly -and $nonGitBytes -lt 65536) { $kind = "agent-empty-shell" }
       $rows += [pscustomobject]@{
         Root=$rootLeaf; Name=$name; Kind=$kind; Grade="X非git"; Score=0
         Backup=0; Active=0; Clean=0; Doc=0
@@ -290,6 +347,10 @@ foreach ($root in $Roots) {
         Remote="-"; LastCommit="-"
       }
     }
+    }
+  } catch { }
+  if ($rootGitCounts[$rootLeaf] -ge 2 -and $rootFilesList.Count -gt 0) {
+    [void]$looseRootFiles.Add([pscustomobject]@{ Root=$rootLeaf; Path=$root; Files=@($rootFilesList.ToArray()) })
   }
 }
 
@@ -405,6 +466,48 @@ foreach ($r in ($otherRows | Sort-Object {$_.Root}, Name)) {
   $md += "| {0} | {1} | {2} | {3} |" -f $r.Root, $r.Name, $r.Kind, $r.Dirty
 }
 $md += ""
+
+# ---- 同源分身与工作区卫生汇总 ----
+$dupRemoteEntries = @($remoteCloneGroups.GetEnumerator() | Where-Object { $_.Value.Count -ge 2 })
+$shellEntries = @($otherRows | Where-Object { $_.Kind -in @("weird-name","timestamp-shell","agent-empty-shell") })
+$suffixDrifts = New-Object System.Collections.ArrayList
+$namesByRoot = @{}
+foreach ($row in $rows) {
+  if (-not $namesByRoot.ContainsKey($row.Root)) { $namesByRoot[$row.Root] = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase) }
+  [void]$namesByRoot[$row.Root].Add($row.Name)
+}
+foreach ($row in $rows) {
+  if ($row.Name -match '^(.+?)-(?:fresh|main-check|check|gapfix|release-prep|obsolete.*|worktrees|\d{8})$') {
+    $baseN = $Matches[1]
+    if ($namesByRoot[$row.Root].Contains($baseN)) {
+      [void]$suffixDrifts.Add("$($row.Root)/$($row.Name) -> 疑似 $baseN 分身")
+    }
+  }
+}
+$hasHygieneHints = ($dupRemoteEntries.Count -gt 0 -or $shellEntries.Count -gt 0 -or $looseRootFiles.Count -gt 0 -or $suffixDrifts.Count -gt 0)
+if ($hasHygieneHints) {
+  $md += "## 同源分身与工作区卫生提示"
+  $md += ""
+  foreach ($dc in $dupRemoteEntries) {
+    $md += "- **同源远端分身**（``$($dc.Key)``）：$($dc.Value -join ', ')（请核实是否保留单份主仓并用 ``.worktrees`` 替代兄弟克隆）"
+  }
+  foreach ($sd in $suffixDrifts) {
+    $md += "- **同源后缀分身候选**：$sd"
+  }
+  foreach ($sh in $shellEntries) {
+    $shWhy = switch ($sh.Kind) {
+      "weird-name"        { "目录名含控制字符/尾随空格或非法字符（须用 ``\\\\?\\`` 前缀处置）" }
+      "timestamp-shell"   { "纯时间戳空壳或仅含 <64KB Agent 元数据（核查客户端默认工作区设置）" }
+      "agent-empty-shell" { "仅含 <64KB Agent 元数据的伪空壳（非真实项目目录）" }
+    }
+    $md += "- **异常/空壳目录** ``$($sh.Root)/$($sh.Name)`` [$($sh.Kind), $($sh.Dirty) 文件]：$shWhy"
+  }
+  foreach ($lf in $looseRootFiles) {
+    $md += "- **多项目容器根一级散件**（``$($lf.Path)``）：$($lf.Files -join ', ')（建议收归目标仓或 ``_scratch/`` / ``\$env:TEMP``）"
+  }
+  $md += ""
+}
+
 $md += "## 隐私检查（逐邮箱判断）"
 $md += ""
 $md += "规则：任一提交邮箱为个人邮箱服务商即标记（混合 noreply 不压掉告警）；敏感模式命中 = 已跟踪文件需复核。"
@@ -468,6 +571,10 @@ Write-Host ("git 仓 {0} | A {1} / B {2} / C {3} / D {4} | 非git {5} | 备份�
   ($gitRows|? Grade -eq 'A健康'|Measure-Object).Count, ($gitRows|? Grade -eq 'B良好'|Measure-Object).Count,
   ($gitRows|? Grade -eq 'C关注'|Measure-Object).Count, ($gitRows|? Grade -eq 'D风险'|Measure-Object).Count,
   ($otherRows|Measure-Object).Count, $gapCount)
+if ($hasHygieneHints) {
+  Write-Host ("工作区卫生提示: 同源分身 {0} 组 / 后缀分身 {1} / 伪空壳或异常名 {2} / 散件根目录 {3}" -f `
+    $dupRemoteEntries.Count, $suffixDrifts.Count, $shellEntries.Count, $looseRootFiles.Count)
+}
 
 if ($trendState -eq "ok") {
   $u = @($trendRows | Where-Object Delta -eq "改善").Count

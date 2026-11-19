@@ -9,7 +9,7 @@ AI agent 工具是本世代新的磁盘/隐私/进程面：数据目录膨胀、
 3. **凭据台账**：各 agent 的 auth/credentials/token 文件只列元数据（路径/大小/mtime）；新增 = P1。台账必须包含同步通道交叉检查：**Syncthing/OneDrive 的同步范围若覆盖凭据文件所在目录 = P0**（凭据外传）。
 4. **沙箱账户群**：`net user` + `Win32_UserAccount`——agent 工具创建的沙箱账户（命名模式 `*-sbx-*`/`*Sandbox*`）为已知形态；**其他陌生启用账户 = P0**。administrators 组成员核对。
 5. **运行态**：agent 相关进程快照（实例数/内存）——多实例/孤儿实例是"卡死连锁"前兆；各 agent 最新日志文件 mtime 与 ERROR 行计数（崩溃循环识别）。
-6. **行为注意**：agent 可能在项目内写数据（`.claude/`、`.workbuddy/`、`.smart-env/` 等目录出现在项目根）——登记并提示"确认被 gitignore/同步排除覆盖"。
+6. **行为与空壳源头检查**：agent 可能在项目内写数据（`.claude/`、`.workbuddy/`、`.smart-env/` 等目录出现在项目根）——登记并提示"确认被 gitignore/同步排除覆盖"。若盘根或容器根反复出现 `YYYY-MM-DD-HH-mm-ss` 纯时间戳空壳或仅含 `<64KB` `memory/` 的伪空壳，须提醒核查客户端（如 WorkBuddy/IDE）默认工作区路径配置并迁入独立 `spaces/` 或 `$env:TEMP`，防止边清进回收站边继续再生。
 
 ## 判定
 - 凭据进入同步通道 / 陌生启用账户 / agent 日志里的认证错误循环 = P0/P1。
